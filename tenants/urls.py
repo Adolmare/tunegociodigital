@@ -1,11 +1,7 @@
-from django.urls import include, path
-from rest_framework.routers import DefaultRouter
+from django.urls import path
 
-from .views import TenantViewSet
-
-router = DefaultRouter()
-router.register(r"tenants", TenantViewSet, basename="tenant")
+from .views import TenantListCreateAPIView
 
 urlpatterns = [
-    path("", include(router.urls)),
+    path("tenants/", TenantListCreateAPIView.as_view(), name="tenant-list-create"),
 ]

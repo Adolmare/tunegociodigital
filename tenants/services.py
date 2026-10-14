@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db import connection
 from .models import Tenant, Membership, TenantTool, Tool
 
 @transaction.atomic
@@ -11,6 +12,8 @@ def enable_tool(tenant, tool, source="manual"):
 @transaction.atomic
 def create_tenant(user, name, slug, business_type=None):
     tenant = Tenant.objects.create(name=name, slug=slug, business_type=business_type)
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT set_config('app.tenant_id', %s, true)", [str(tenant.pk)])
     Membership.objects.create(user=user, tenant=tenant, role=Membership.Role.OWNER)
     tools = set(Tool.objects.filter(is_core=True))
     if business_type:

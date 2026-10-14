@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Membership, Tenant, TenantApiKey
+from .models import BusinessType, Tenant
 
 
 class TenantSerializer(serializers.ModelSerializer):
@@ -19,15 +19,22 @@ class TenantSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "created_at"]
 
 
-class MembershipSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Membership
-        fields = ["id", "user", "tenant", "role", "is_active", "created_at"]
-        read_only_fields = ["id", "created_at"]
+class TenantCreateSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=150)
+    slug = serializers.SlugField(max_length=50)
+    business_type = serializers.SlugRelatedField(
+        slug_field="code",
+        queryset=BusinessType.objects.all(),
+        required=False,
+        allow_null=True,
+    )
 
-
-class TenantApiKeySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = TenantApiKey
-        fields = ["id", "tenant", "name", "key_hash", "scopes", "revoked_at", "created_at"]
-        read_only_fields = ["id", "key_hash", "created_at"]
+    def validate(self, attrs):
+        unexpected_tenant_fields = {"tenant", "tenant_id"}.intersection(self.initial_data)
+        if unexpected_tenant_fields:
+            raise serializers.ValidationError(
+                "El tenant se determina al crear la empresa y no se acepta en la solicitud."
+            )
+        if Tenant.objects.filter(slug=attrs["slug"]).exists():
+            raise serializers.ValidationError({"slug": "Este slug ya está en uso."})
+        return attrs

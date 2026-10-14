@@ -1,26 +1,40 @@
-from rest_framework import viewsets
+from rest_framework import generics, status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
-from .api import TenantViewSet as BaseTenantViewSet
-from .models import Membership, Tenant, TenantApiKey
-from .serializers import MembershipSerializer, TenantApiKeySerializer, TenantSerializer
-
-
-class TenantViewSet(BaseTenantViewSet):
-    queryset = Tenant.objects.all()
-    serializer_class = TenantSerializer
-    required_tool = None
-    min_role = "owner"
+from .api import _set_database_context
+from .models import Membership, Tenant
+from .serializers import TenantCreateSerializer, TenantSerializer
+from .services import create_tenant
 
 
-class MembershipViewSet(BaseTenantViewSet):
-    queryset = Membership.objects.all()
-    serializer_class = MembershipSerializer
-    required_tool = None
-    min_role = "admin"
+class TenantListCreateAPIView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = TenantCreateSerializer
 
+    def get(self, request, *args, **kwargs):
+        _set_database_context(request.user.pk)
+        tenants = Tenant.objects.filter(
+            memberships__user=request.user,
+            memberships__is_active=True,
+        ).distinct()
+        return Response(TenantSerializer(tenants, many=True).data)
 
-class TenantApiKeyViewSet(BaseTenantViewSet):
-    queryset = TenantApiKey.objects.all()
-    serializer_class = TenantApiKeySerializer
-    required_tool = "deliveries"
-    min_role = "owner"
+    def post(self, request, *args, **kwargs):
+        _set_database_context(request.user.pk)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        tenant = create_tenant(
+            user=request.user,
+            name=serializer.validated_data["name"],
+            slug=serializer.validated_data["slug"],
+            business_type=serializer.validated_data.get("business_type"),
+        )
+        membership = Membership.objects.get(user=request.user, tenant=tenant)
+        return Response(
+            {
+                "tenant": TenantSerializer(tenant).data,
+                "role": membership.role,
+            },
+            status=status.HTTP_201_CREATED,
+        )

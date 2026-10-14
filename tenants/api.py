@@ -1,3 +1,5 @@
+import uuid
+
 from django.core.exceptions import ValidationError
 from django.db import connection
 from rest_framework import serializers, viewsets
@@ -10,12 +12,26 @@ from .models import Membership, TenantTool
 RANK = {"employee": 1, "manager": 2, "admin": 3, "owner": 4}
 
 
+def _set_database_context(user_id, tenant_id=None):
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT set_config('app.user_id', %s, true)", [str(user_id)])
+        cursor.execute(
+            "SELECT set_config('app.tenant_id', %s, true)",
+            [str(tenant_id) if tenant_id is not None else ""],
+        )
+
+
 class TenantContextMixin:
     def initial(self, request, *args, **kwargs):
         self.perform_authentication(request)
         tenant_id = request.headers.get("X-Tenant-ID")
         if not tenant_id:
             raise NotFound()
+        try:
+            tenant_id = uuid.UUID(tenant_id)
+        except (AttributeError, TypeError, ValueError):
+            raise NotFound()
+        _set_database_context(request.user.pk, tenant_id)
         try:
             membership = Membership.objects.select_related("tenant").get(
                 user=request.user,
@@ -29,8 +45,6 @@ class TenantContextMixin:
         request.tenant = membership.tenant
         request.membership = membership
         set_tenant(membership.tenant)
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT set_config('app.tenant_id', %s, true)", [str(membership.tenant_id)])
         super().initial(request, *args, **kwargs)
 
     def dispatch(self, request, *args, **kwargs):
