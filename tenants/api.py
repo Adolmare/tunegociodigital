@@ -7,6 +7,7 @@ from rest_framework.exceptions import NotFound
 from rest_framework.permissions import BasePermission, IsAuthenticated
 
 from core.context import clear_tenant, set_tenant
+from core.context import get_tenant
 from .models import Membership, TenantTool
 
 RANK = {"employee": 1, "manager": 2, "admin": 3, "owner": 4}
@@ -71,7 +72,11 @@ class HasRole(BasePermission):
         membership = getattr(request, "membership", None)
         if membership is None:
             return False
-        required = getattr(view, "min_role", "employee")
+        role_by_action = getattr(view, "role_by_action", {})
+        required = role_by_action.get(
+            getattr(view, "action", None),
+            getattr(view, "min_role", "employee"),
+        )
         return RANK.get(membership.role, 0) >= RANK.get(required, 0)
 
 
@@ -84,6 +89,42 @@ class TenantScopedRelatedField(serializers.PrimaryKeyRelatedField):
         if self.queryset is not None:
             return self.queryset
         return super().get_queryset()
+
+
+class TenantRelatedField(serializers.PrimaryKeyRelatedField):
+    def __init__(self, model, **kwargs):
+        self.related_model = model
+        super().__init__(queryset=model.unscoped.none(), **kwargs)
+
+    def get_queryset(self):
+        if get_tenant() is None:
+            return self.related_model.unscoped.none()
+        return self.related_model.objects.all()
+
+
+class TenantMemberUserField(serializers.PrimaryKeyRelatedField):
+    def __init__(self, **kwargs):
+        from accounts.models import User
+
+        self.related_model = User
+        super().__init__(queryset=User.objects.none(), **kwargs)
+
+    def get_queryset(self):
+        tenant = get_tenant()
+        if tenant is None:
+            return self.related_model.objects.none()
+        return self.related_model.objects.filter(
+            memberships__tenant=tenant,
+            memberships__is_active=True,
+        )
+
+
+class ActionMinRoleMixin:
+    role_by_action = {}
+
+    def get_permissions(self):
+        self.min_role = self.role_by_action.get(self.action, getattr(self, "min_role", "employee"))
+        return super().get_permissions()
 
 
 class TenantViewSet(TenantContextMixin, viewsets.ModelViewSet):

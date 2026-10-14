@@ -90,8 +90,10 @@ def test_all_tenant_tables_force_row_level_security():
     tenant_tables = []
     for model in apps.get_models():
         try:
-            model._meta.get_field("tenant")
+            field = model._meta.get_field("tenant")
         except FieldDoesNotExist:
+            continue
+        if field.auto_created:      # relación inversa, no es una columna tenant_id
             continue
         tenant_tables.append(model._meta.db_table)
 
