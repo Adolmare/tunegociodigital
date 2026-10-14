@@ -2,7 +2,7 @@ from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .api import _set_database_context
+from .api import set_database_context
 from .models import Membership, Tenant
 from .serializers import TenantCreateSerializer, TenantSerializer
 from .services import create_tenant
@@ -13,7 +13,7 @@ class TenantListCreateAPIView(generics.GenericAPIView):
     serializer_class = TenantCreateSerializer
 
     def get(self, request, *args, **kwargs):
-        _set_database_context(request.user.pk)
+        set_database_context(request.user.pk)
         tenants = Tenant.objects.filter(
             memberships__user=request.user,
             memberships__is_active=True,
@@ -21,7 +21,7 @@ class TenantListCreateAPIView(generics.GenericAPIView):
         return Response(TenantSerializer(tenants, many=True).data)
 
     def post(self, request, *args, **kwargs):
-        _set_database_context(request.user.pk)
+        set_database_context(request.user.pk)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         tenant = create_tenant(

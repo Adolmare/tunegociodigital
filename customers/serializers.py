@@ -1,9 +1,12 @@
 from rest_framework import serializers
+from rest_framework_gis.fields import GeometryField
 
 from .models import Customer
 
 
 class CustomerSerializer(serializers.ModelSerializer):
+    location = GeometryField(required=False, allow_null=True)
+
     class Meta:
         model = Customer
         exclude = ("tenant",)

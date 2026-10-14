@@ -1,4 +1,4 @@
-from django.db import models
+from django.contrib.gis.db import models
 
 from core.models import TenantOwnedModel
 
@@ -9,6 +9,7 @@ class Customer(TenantOwnedModel):
     email = models.EmailField(blank=True, default="")
     document_id = models.CharField(max_length=40, blank=True, default="")
     address = models.TextField(blank=True)
+    location = models.PointField(srid=4326, null=True, blank=True)
     notes = models.TextField(blank=True)
     deleted_at = models.DateTimeField(null=True, blank=True)
 

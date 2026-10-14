@@ -1,4 +1,6 @@
 """Configuración común de TuNegocio Digital (dev, test y prod heredan de aquí)."""
+import os
+import sys
 from pathlib import Path
 
 import environ
@@ -6,6 +8,16 @@ import environ
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 env = environ.Env()
 environ.Env.read_env(BASE_DIR / ".env")
+
+if sys.platform == "win32" and os.environ.get("OSGEO4W_ROOT"):
+    _osgeo4w_bin = Path(os.environ["OSGEO4W_ROOT"]) / "bin"
+    _osgeo4w_dll_directory = os.add_dll_directory(str(_osgeo4w_bin))
+    _gdal_libraries = sorted(_osgeo4w_bin.glob("gdal[0-9]*.dll"))
+    if _gdal_libraries:
+        GDAL_LIBRARY_PATH = str(_gdal_libraries[-1])
+    _geos_library = _osgeo4w_bin / "geos_c.dll"
+    if _geos_library.exists():
+        GEOS_LIBRARY_PATH = str(_geos_library)
 
 SECRET_KEY = env("SECRET_KEY")
 DEBUG = env.bool("DEBUG", False)
@@ -18,8 +30,10 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.gis",
     # Terceros
     "rest_framework",
+    "rest_framework_gis",
     "corsheaders",
     "drf_spectacular",
     # Núcleo de la plataforma
@@ -50,6 +64,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "core.admin_middleware.AdminRLSMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -77,6 +92,7 @@ DATABASES = {
     "migrator": env.db("MIGRATOR_DATABASE_URL"),
 }
 for _db in DATABASES.values():
+    _db["ENGINE"] = "django.contrib.gis.db.backends.postgis"
     _db["ATOMIC_REQUESTS"] = True  # necesario para Row Level Security
 
 AUTH_USER_MODEL = "accounts.User"
