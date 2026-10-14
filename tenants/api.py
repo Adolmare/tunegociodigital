@@ -1,0 +1,81 @@
+from django.core.exceptions import ValidationError
+from django.db import connection
+from rest_framework import serializers, viewsets
+from rest_framework.exceptions import NotFound
+from rest_framework.permissions import BasePermission, IsAuthenticated
+
+from core.context import clear_tenant, set_tenant
+from .models import Membership, TenantTool
+
+RANK = {"employee": 1, "manager": 2, "admin": 3, "owner": 4}
+
+
+class TenantContextMixin:
+    def initial(self, request, *args, **kwargs):
+        self.perform_authentication(request)
+        tenant_id = request.headers.get("X-Tenant-ID")
+        if not tenant_id:
+            raise NotFound()
+        try:
+            membership = Membership.objects.select_related("tenant").get(
+                user=request.user,
+                tenant_id=tenant_id,
+                is_active=True,
+                tenant__status__in=["trial", "active"],
+            )
+        except (Membership.DoesNotExist, ValidationError, ValueError):
+            raise NotFound()
+
+        request.tenant = membership.tenant
+        request.membership = membership
+        set_tenant(membership.tenant)
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT set_config('app.tenant_id', %s, true)", [str(membership.tenant_id)])
+        super().initial(request, *args, **kwargs)
+
+    def dispatch(self, request, *args, **kwargs):
+        try:
+            return super().dispatch(request, *args, **kwargs)
+        finally:
+            clear_tenant()
+
+
+class HasTool(BasePermission):
+    def has_permission(self, request, view):
+        code = getattr(view, "required_tool", None)
+        if code is None:
+            return True
+        return TenantTool.objects.filter(
+            tenant=request.tenant,
+            tool__code=code,
+            is_enabled=True,
+        ).exists()
+
+
+class HasRole(BasePermission):
+    def has_permission(self, request, view):
+        membership = getattr(request, "membership", None)
+        if membership is None:
+            return False
+        required = getattr(view, "min_role", "employee")
+        return RANK.get(membership.role, 0) >= RANK.get(required, 0)
+
+
+class TenantScopedRelatedField(serializers.PrimaryKeyRelatedField):
+    def __init__(self, queryset=None, **kwargs):
+        self.queryset = queryset
+        super().__init__(**kwargs)
+
+    def get_queryset(self):
+        if self.queryset is not None:
+            return self.queryset
+        return super().get_queryset()
+
+
+class TenantViewSet(TenantContextMixin, viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, HasTool, HasRole]
+    required_tool = None
+    min_role = "employee"
+
+    def perform_create(self, serializer):
+        serializer.save(tenant=self.request.tenant)

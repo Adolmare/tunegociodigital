@@ -43,3 +43,15 @@ class TenantTool(models.Model):
     source = models.CharField(max_length=10, default="manual")   # manual / plan
     class Meta:
         constraints = [models.UniqueConstraint(fields=["tenant", "tool"], name="uniq_tenant_tool")]
+
+
+class TenantApiKey(models.Model):
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="api_keys")
+    name = models.CharField(max_length=80)
+    key_hash = models.CharField(max_length=128, unique=True)
+    scopes = models.JSONField(default=list, blank=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["tenant", "name"], name="uniq_tenant_apikey_name")]
