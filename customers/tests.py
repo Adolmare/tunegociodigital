@@ -23,3 +23,4 @@ def test_customer_crud_is_scoped_to_active_tenant(two_tenants, client_for):
     deleted = client_a.delete(reverse("customer-detail", args=[customer_id]))
     assert deleted.status_code == status.HTTP_204_NO_CONTENT
     assert Customer.unscoped.filter(pk=customer_id, deleted_at__isnull=False).exists()
+    assert client_a.get(reverse("customer-list")).data == []

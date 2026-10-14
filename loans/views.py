@@ -13,6 +13,9 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
     required_tool = "loans"
     min_role = "manager"
     role_by_action = {
+        "list": "employee",
+        "retrieve": "employee",
+        "create": "employee",
         "destroy": "owner",
         "update": "manager",
         "partial_update": "manager",
@@ -20,14 +23,19 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
     serializer_class = LoanSerializer
 
     def get_queryset(self):
-        return Loan.objects.all()
+        queryset = Loan.objects.all()
+        if self.request.membership.role == "employee":
+            queryset = queryset.filter(collector__user=self.request.user)
+        return queryset
 
 
 class LoanPaymentViewSet(ActionMinRoleMixin, TenantViewSet):
     required_tool = "loans"
     min_role = "manager"
     role_by_action = {
-        "create": "manager",
+        "list": "employee",
+        "retrieve": "employee",
+        "create": "employee",
         "update": "owner",
         "partial_update": "owner",
         "destroy": "owner",
@@ -36,13 +44,18 @@ class LoanPaymentViewSet(ActionMinRoleMixin, TenantViewSet):
     serializer_class = LoanPaymentSerializer
 
     def get_queryset(self):
-        return LoanPayment.objects.all()
+        queryset = LoanPayment.objects.all()
+        if self.request.membership.role == "employee":
+            queryset = queryset.filter(collector__user=self.request.user)
+        return queryset
 
 
 class CollectionRouteViewSet(ActionMinRoleMixin, TenantViewSet):
     required_tool = "loans"
     min_role = "manager"
     role_by_action = {
+        "list": "employee",
+        "retrieve": "employee",
         "destroy": "owner",
         "update": "manager",
         "partial_update": "manager",
@@ -50,18 +63,26 @@ class CollectionRouteViewSet(ActionMinRoleMixin, TenantViewSet):
     serializer_class = CollectionRouteSerializer
 
     def get_queryset(self):
-        return CollectionRoute.objects.all()
+        queryset = CollectionRoute.objects.all()
+        if self.request.membership.role == "employee":
+            queryset = queryset.filter(collector__user=self.request.user)
+        return queryset
 
 
 class RouteStopViewSet(ActionMinRoleMixin, TenantViewSet):
     required_tool = "loans"
     min_role = "manager"
     role_by_action = {
+        "list": "employee",
+        "retrieve": "employee",
+        "partial_update": "employee",
         "destroy": "owner",
         "update": "manager",
-        "partial_update": "manager",
     }
     serializer_class = RouteStopSerializer
 
     def get_queryset(self):
-        return RouteStop.objects.all()
+        queryset = RouteStop.objects.all()
+        if self.request.membership.role == "employee":
+            queryset = queryset.filter(route__collector__user=self.request.user)
+        return queryset

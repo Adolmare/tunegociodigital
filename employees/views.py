@@ -10,7 +10,7 @@ class EmployeeViewSet(TenantViewSet):
     min_role = "employee"
 
     def get_queryset(self):
-        return Employee.objects.all()
+        return Employee.objects.filter(deleted_at__isnull=True)
 
     def perform_destroy(self, instance):
         instance.deleted_at = timezone.now()

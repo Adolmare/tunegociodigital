@@ -1,4 +1,5 @@
 import pytest
+from django.core.management import call_command
 from django.db import connection
 from rest_framework.test import APIClient
 
@@ -40,3 +41,16 @@ def client_for():
         return client
 
     return make_client
+
+
+@pytest.fixture
+def seeded_tools(db):
+    call_command("seed_catalog")
+
+
+@pytest.fixture
+def rls_context():
+    def apply(user, tenant):
+        _set_rls_context(user.pk, tenant.pk)
+
+    return apply
