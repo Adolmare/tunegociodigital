@@ -16,6 +16,7 @@ def backfill_financial_data(apps, schema_editor):
     LoanPayment = apps.get_model("loans", "LoanPayment")
     PaymentAllocation = apps.get_model("loans", "PaymentAllocation")
     connection = schema_editor.connection
+    db_alias = connection.alias
     cent = Decimal("0.01")
 
     # The migration runs in one transaction; temporarily bypass existing tenant RLS
@@ -23,7 +24,7 @@ def backfill_financial_data(apps, schema_editor):
     schema_editor.execute("ALTER TABLE loans_loan DISABLE ROW LEVEL SECURITY")
     schema_editor.execute("ALTER TABLE loans_loanpayment DISABLE ROW LEVEL SECURITY")
     try:
-        for loan in Loan._base_manager.order_by("pk").iterator():
+        for loan in Loan._base_manager.using(db_alias).order_by("pk").iterator():
             principal = loan.principal.quantize(cent, rounding=ROUND_HALF_UP)
             rate = loan.interest_rate
             if principal <= 0 or rate < 0 or loan.installments < 1:
@@ -62,7 +63,7 @@ def backfill_financial_data(apps, schema_editor):
                     due_date = date(year, month, day)
                 amount = Decimal(base_cents + (number <= remainder)) / 100
                 schedule.append(
-                    LoanInstallment.objects.create(
+                    LoanInstallment.objects.using(db_alias).create(
                         tenant_id=loan.tenant_id,
                         loan_id=loan.pk,
                         number=number,
@@ -72,7 +73,7 @@ def backfill_financial_data(apps, schema_editor):
                 )
 
             remaining = total
-            payments = LoanPayment._base_manager.filter(
+            payments = LoanPayment._base_manager.using(db_alias).filter(
                 loan_id=loan.pk,
                 direction="payment",
             ).order_by("paid_at", "pk")
@@ -94,8 +95,8 @@ def backfill_financial_data(apps, schema_editor):
                         if installment.amount_paid == installment.amount_due
                         else "partial"
                     )
-                    installment.save(update_fields=["amount_paid", "status"])
-                    PaymentAllocation.objects.create(
+                    installment.save(using=db_alias, update_fields=["amount_paid", "status"])
+                    PaymentAllocation.objects.using(db_alias).create(
                         tenant_id=loan.tenant_id,
                         payment_id=payment.pk,
                         installment_id=installment.pk,
@@ -124,7 +125,7 @@ def backfill_financial_data(apps, schema_editor):
                     loan.status = "delinquent"
                 else:
                     loan.status = "active"
-            loan.save(update_fields=["total_payable", "balance", "status"])
+            loan.save(using=db_alias, update_fields=["total_payable", "balance", "status"])
     finally:
         if not connection.needs_rollback:
             schema_editor.execute("ALTER TABLE loans_loan ENABLE ROW LEVEL SECURITY")
