@@ -7,7 +7,8 @@ import environ
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 env = environ.Env()
-environ.Env.read_env(BASE_DIR / ".env")
+if os.environ.get("DJANGO_SETTINGS_MODULE") != "config.settings.prod":
+    environ.Env.read_env(BASE_DIR / ".env")
 
 if sys.platform == "win32" and os.environ.get("OSGEO4W_ROOT"):
     _osgeo4w_bin = Path(os.environ["OSGEO4W_ROOT"]) / "bin"
@@ -34,6 +35,7 @@ INSTALLED_APPS = [
     # Terceros
     "rest_framework",
     "rest_framework_gis",
+    "storages",
     "corsheaders",
     "drf_spectacular",
     # Núcleo de la plataforma

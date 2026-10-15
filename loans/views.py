@@ -1,8 +1,10 @@
+import asyncio
 from datetime import datetime
 import json
 import time
 import uuid
 
+from asgiref.sync import sync_to_async
 from django.db import transaction
 from django.http import StreamingHttpResponse
 from django.utils import timezone
@@ -39,6 +41,20 @@ from .services import (
     register_payment,
     reverse_payment,
 )
+
+
+def _read_payment_events(user_id, tenant_id, cursor):
+    with transaction.atomic():
+        set_database_context(user_id, tenant_id)
+        return list(
+            EventInbox.unscoped.filter(
+                tenant_id=tenant_id,
+                event_name="loan.payment_received",
+                occurred_at__gte=cursor,
+            )
+            .order_by("occurred_at", "id")
+            .values("id", "occurred_at", "payload")[:100]
+        )
 
 
 class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
@@ -188,22 +204,15 @@ class LoanPaymentEventStreamView(TenantContextMixin, APIView):
         tenant_id = str(request.tenant.pk)
         user_id = str(request.user.pk)
 
-        def stream():
+        async def stream():
             nonlocal cursor
             yield "event: ready\ndata: {}\n\n"
             last_heartbeat = time.monotonic()
             while True:
-                with transaction.atomic():
-                    set_database_context(user_id, tenant_id)
-                    events = list(
-                        EventInbox.unscoped.filter(
-                            tenant_id=tenant_id,
-                            event_name="loan.payment_received",
-                            occurred_at__gte=cursor,
-                        )
-                        .order_by("occurred_at", "id")
-                        .values("id", "occurred_at", "payload")[:100]
-                    )
+                events = await sync_to_async(
+                    _read_payment_events,
+                    thread_sensitive=True,
+                )(user_id, tenant_id, cursor)
 
                 for event in events:
                     occurred_at = event["occurred_at"]
@@ -228,7 +237,7 @@ class LoanPaymentEventStreamView(TenantContextMixin, APIView):
                 if not events and time.monotonic() - last_heartbeat >= 15:
                     yield ": keep-alive\n\n"
                     last_heartbeat = time.monotonic()
-                time.sleep(1)
+                await asyncio.sleep(1)
 
         response = StreamingHttpResponse(stream(), content_type="text/event-stream")
         response["Cache-Control"] = "no-cache"

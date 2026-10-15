@@ -1,15 +1,18 @@
 ﻿import pytest
+from asgiref.sync import async_to_sync, sync_to_async
 from decimal import Decimal
 from datetime import timedelta
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework import status
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 from accounts.models import User
 from accounting.models import EventInbox
 from customers.models import Customer
 from employees.models import Employee
 from loans.models import CollectionRoute, Loan, LoanInstallment, LoanPayment
+from loans.views import LoanPaymentEventStreamView
 from tenants.models import Membership, Tool
 from tenants.services import enable_tool
 
@@ -244,21 +247,46 @@ def test_owner_and_admin_receive_live_payment_events(
     stream_url = reverse("loan-payment-events-stream")
     employee_client = client_for(employee_user, tenant)
     assert employee_client.get(stream_url).status_code == status.HTTP_403_FORBIDDEN
-    admin_response = client_for(admin_user, tenant).get(stream_url)
-    assert admin_response.status_code == status.HTTP_200_OK
 
-    owner_response = client_for(owner, tenant).get(stream_url)
-    assert owner_response.status_code == status.HTTP_200_OK
+    def make_stream_response(user):
+        request = APIRequestFactory().get(
+            stream_url,
+            HTTP_X_TENANT_ID=str(tenant.pk),
+        )
+        force_authenticate(request, user=user)
+        return LoanPaymentEventStreamView.as_view()(request)
+
+    owner_response = make_stream_response(owner)
+    admin_response = make_stream_response(admin_user)
+    assert owner_response.status_code == admin_response.status_code == status.HTTP_200_OK
     assert owner_response["Content-Type"].startswith("text/event-stream")
-    stream = iter(owner_response.streaming_content)
-    assert next(stream).decode() == "event: ready\ndata: {}\n\n"
+    assert owner_response.is_async
+    owner_stream = owner_response.streaming_content
+    admin_stream = admin_response.streaming_content
 
-    payment_response = _post_payment(employee_client, loan_id, "100.00")
-    assert payment_response.status_code == status.HTTP_201_CREATED
-    event = next(stream).decode()
-    assert "event: loan.payment_received\n" in event
-    assert f'"payment_id":"{payment_response.data["id"]}"' in event
-    assert '"balance":"1100.00"' in event
+    async def receive_live_payment():
+        ready_owner = await anext(owner_stream)
+        ready_admin = await anext(admin_stream)
+        payment_response = await sync_to_async(
+            _post_payment,
+            thread_sensitive=True,
+        )(employee_client, loan_id, "100.00")
+        assert payment_response.status_code == status.HTTP_201_CREATED
+        owner_event = await anext(owner_stream)
+        admin_event = await anext(admin_stream)
+        await owner_stream.aclose()
+        await admin_stream.aclose()
+        return ready_owner, ready_admin, payment_response, owner_event, admin_event
+
+    ready_owner, ready_admin, payment_response, owner_event, admin_event = (
+        async_to_sync(receive_live_payment)()
+    )
+    assert ready_owner == ready_admin == b"event: ready\ndata: {}\n\n"
+    for event in (owner_event, admin_event):
+        event = event.decode()
+        assert "event: loan.payment_received\n" in event
+        assert f'"payment_id":"{payment_response.data["id"]}"' in event
+        assert '"balance":"1100.00"' in event
 
 
 @pytest.mark.django_db

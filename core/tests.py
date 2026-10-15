@@ -8,6 +8,13 @@ from tenants.models import BusinessType, Membership, TenantTool, Tool
 from tenants.services import create_tenant, enable_tool
 
 
+@pytest.mark.django_db
+def test_health_check_reports_database_connectivity(client):
+    response = client.get("/health/")
+
+    assert response.status_code == 204
+
+
 def test_tenant_manager_fails_without_tenant_context():
     clear_tenant()
 
