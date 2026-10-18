@@ -12,10 +12,11 @@ def test_customer_crud_is_scoped_to_active_tenant(two_tenants, client_for):
 
     created = client_a.post(
         reverse("customer-list"),
-        {"full_name": "Cliente A"},
+        {"full_name": "Cliente A", "neighborhood": "VENECIA"},
         format="json",
     )
     assert created.status_code == status.HTTP_201_CREATED
+    assert created.data["neighborhood"] == "VENECIA"
     customer_id = created.data["id"]
     assert client_a.get(reverse("customer-detail", args=[customer_id])).status_code == status.HTTP_200_OK
     assert client_b.get(reverse("customer-detail", args=[customer_id])).status_code == status.HTTP_404_NOT_FOUND

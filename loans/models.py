@@ -24,11 +24,16 @@ class Loan(TenantOwnedModel):
     principal = models.DecimalField(max_digits=14, decimal_places=2)
     interest_rate = models.DecimalField(max_digits=6, decimal_places=2, default=0)
     installments = models.PositiveIntegerField(default=1)
+    is_open_ended = models.BooleanField(default=False)
     frequency = models.CharField(max_length=16, choices=FREQUENCY_CHOICES, default="monthly")
     start_date = models.DateField()
+    collection_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    paperwork_fee = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     total_payable = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    opening_paid = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     balance = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="pending")
+    import_reference = models.CharField(max_length=80, blank=True, default="")
 
     class Meta:
         constraints = [
@@ -49,8 +54,21 @@ class Loan(TenantOwnedModel):
                 name="loan_total_payable_nonnegative",
             ),
             models.CheckConstraint(
+                condition=Q(paperwork_fee__gte=0),
+                name="loan_paperwork_fee_nonnegative",
+            ),
+            models.CheckConstraint(
+                condition=Q(opening_paid__gte=0) & Q(opening_paid__lte=models.F("total_payable")),
+                name="loan_opening_paid_in_range",
+            ),
+            models.CheckConstraint(
                 condition=Q(balance__gte=0),
                 name="loan_balance_nonnegative",
+            ),
+            models.UniqueConstraint(
+                fields=["tenant", "import_reference"],
+                condition=Q(import_reference__gt=""),
+                name="uniq_loan_tenant_import_reference",
             ),
         ]
 

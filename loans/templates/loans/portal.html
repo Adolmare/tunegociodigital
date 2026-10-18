@@ -1,0 +1,360 @@
+{% load static %}
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#102820">
+  <title>Préstamos | TuNegocio</title>
+  <link rel="stylesheet" href="{% static 'loans/portal.css' %}">
+  <script src="{% static 'loans/portal.js' %}" defer></script>
+</head>
+<body>
+  <main class="app-shell" id="loan-app" data-api-base="/api/v1">
+    <section class="auth-screen" id="auth-screen" aria-labelledby="login-title">
+      <div class="brand brand-auth">
+        <span class="brand-mark" aria-hidden="true">t.</span>
+        <span>TuNegocio</span>
+      </div>
+      <div class="auth-card">
+        <p class="eyebrow">GESTIÓN DE CARTERA</p>
+        <h1 id="login-title">Tus préstamos,<br>más cerca.</h1>
+        <p class="muted">Inicia sesión para administrar tu cartera y registrar cobros.</p>
+        <div class="notice notice-error" id="auth-error" role="alert" hidden></div>
+        <form id="login-form" class="stack">
+          <label for="login-username">Usuario</label>
+          <input id="login-username" name="username" type="text" autocomplete="username" placeholder="Tu nombre de usuario" required>
+          <label for="login-password">Contraseña</label>
+          <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="Tu contraseña" required>
+          <button class="button button-primary button-wide" type="submit">Ingresar <span aria-hidden="true">→</span></button>
+        </form>
+      </div>
+      <p class="auth-footnote">Acceso seguro para tu equipo de trabajo.</p>
+    </section>
+
+    <section class="tenant-screen" id="tenant-screen" hidden aria-labelledby="tenant-title">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">t.</span>
+        <span>TuNegocio</span>
+      </div>
+      <div class="auth-card">
+        <p class="eyebrow">TU ESPACIO DE TRABAJO</p>
+        <h1 id="tenant-title">Elige tu negocio</h1>
+        <p class="muted">Selecciona la empresa cuya cartera quieres consultar.</p>
+        <div class="notice notice-error" id="tenant-error" role="alert" hidden></div>
+        <div id="tenant-options" class="tenant-options"></div>
+        <button class="text-button" id="tenant-logout" type="button">Cerrar sesión</button>
+      </div>
+    </section>
+
+    <section class="workspace" id="workspace" hidden>
+      <aside class="sidebar">
+        <a class="brand" href="#inicio" aria-label="TuNegocio, inicio">
+          <span class="brand-mark" aria-hidden="true">t.</span>
+          <span>TuNegocio</span>
+        </a>
+        <p class="sidebar-caption">FINANZAS</p>
+        <nav class="side-nav" aria-label="Navegación principal">
+          <button class="nav-button is-active" type="button" data-view="home"><span aria-hidden="true">▦</span> Resumen</button>
+          <button class="nav-button" type="button" data-view="collections"><span aria-hidden="true">↗</span> Cobros de hoy</button>
+          <button class="nav-button" id="ledger-nav" type="button" data-view="ledger" hidden><span aria-hidden="true">▤</span> Libro de cartera</button>
+          <button class="nav-button" type="button" data-view="new-loan"><span aria-hidden="true">＋</span> Nuevo préstamo</button>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="avatar" id="sidebar-avatar">T</div>
+          <div class="sidebar-user">
+            <strong id="sidebar-user-name">Tu cuenta</strong>
+            <span id="sidebar-tenant-name">Tu negocio</span>
+          </div>
+          <button class="icon-button" id="logout-button" type="button" aria-label="Cerrar sesión" title="Cerrar sesión">↪</button>
+        </div>
+      </aside>
+
+      <div class="main-column">
+        <header class="topbar">
+          <div class="mobile-brand brand">
+            <span class="brand-mark" aria-hidden="true">t.</span>
+            <span>TuNegocio</span>
+          </div>
+          <div class="topbar-spacer"></div>
+          <div class="tenant-chip"><span class="online-dot"></span><span id="topbar-tenant-name">Tu negocio</span></div>
+          <button class="avatar avatar-small" id="topbar-avatar" type="button" aria-label="Cerrar sesión">T</button>
+        </header>
+
+        <div class="content">
+          <div class="page-heading">
+            <div>
+              <p class="eyebrow" id="today-label">TU CARTERA</p>
+              <h1 id="view-title">Resumen</h1>
+              <p class="muted" id="view-subtitle">Una mirada clara a tus préstamos.</p>
+            </div>
+            <button class="button button-primary desktop-new-button" type="button" data-view="new-loan">
+              <span aria-hidden="true">＋</span> Nuevo préstamo
+            </button>
+          </div>
+
+          <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
+          <div class="notice notice-error" id="error-notice" role="alert" hidden></div>
+
+          <section class="view-panel" id="home-view" aria-label="Resumen de préstamos">
+            <div class="summary-grid">
+              <article class="summary-card summary-main">
+                <div class="summary-card-top">
+                  <span class="summary-icon" aria-hidden="true">↗</span>
+                  <span class="summary-label">Saldo por cobrar</span>
+                </div>
+                <strong class="summary-value" id="total-balance">$0.00</strong>
+                <span class="summary-caption"><span id="active-count">0</span> préstamos activos</span>
+                <span class="summary-decoration" aria-hidden="true">↗</span>
+              </article>
+              <article class="summary-card">
+                <div class="summary-card-top">
+                  <span class="summary-icon icon-soft" aria-hidden="true">◷</span>
+                  <span class="summary-label">Cobros para hoy</span>
+                </div>
+                <strong class="summary-value" id="today-count">0</strong>
+                <button class="inline-link" type="button" data-view="collections">Ver cobros <span aria-hidden="true">→</span></button>
+              </article>
+              <article class="summary-card">
+                <div class="summary-card-top">
+                  <span class="summary-icon icon-warm" aria-hidden="true">＋</span>
+                  <span class="summary-label">Préstamos en cartera</span>
+                </div>
+                <strong class="summary-value" id="loan-count">0</strong>
+                <span class="summary-caption">En todos los estados</span>
+              </article>
+            </div>
+
+            <section class="section-card">
+              <div class="section-heading">
+                <div>
+                  <h2>Préstamos de cartera</h2>
+                  <p class="muted">Consulta saldos y registra abonos.</p>
+                </div>
+                <button class="button button-quiet" type="button" id="refresh-button" aria-label="Actualizar préstamos">↻ <span class="desktop-only">Actualizar</span></button>
+              </div>
+              <div class="loan-list" id="loan-list"></div>
+              <div class="empty-state" id="loans-empty" hidden>
+                <span class="empty-icon" aria-hidden="true">◌</span>
+                <h3>Tu cartera empieza aquí</h3>
+                <p>Crea un préstamo para controlar sus cobros y saldo.</p>
+                <button class="button button-primary" type="button" data-view="new-loan">Crear préstamo</button>
+              </div>
+            </section>
+          </section>
+
+          <section class="view-panel" id="collections-view" hidden aria-label="Cobros pendientes">
+            <section class="section-card">
+              <div class="section-heading">
+                <div>
+                  <h2>Ruta de cobro</h2>
+                  <p class="muted">Cuotas vencidas o programadas para hoy.</p>
+                </div>
+                <span class="count-pill" id="collection-pill">0 pendientes</span>
+              </div>
+              <div class="loan-list" id="collection-list"></div>
+              <div class="empty-state" id="collections-empty" hidden>
+                <span class="empty-icon empty-success" aria-hidden="true">✓</span>
+                <h3>Todo al día</h3>
+                <p>No hay cobros pendientes para registrar por ahora.</p>
+              </div>
+            </section>
+          </section>
+
+          <section class="view-panel" id="ledger-view" hidden aria-label="Libro de cartera">
+            <section class="section-card ledger-card">
+              <div class="section-heading ledger-heading">
+                <div>
+                  <h2>Libro de cartera</h2>
+                  <p class="muted">Vista tipo Excel con los abonos registrados en el período.</p>
+                </div>
+                <span class="count-pill" id="ledger-period-label">—</span>
+              </div>
+              <form class="ledger-filters" id="ledger-filters">
+                <div class="field">
+                  <label for="ledger-period">Ver por período</label>
+                  <select id="ledger-period" name="period">
+                    <option value="day">Diario</option>
+                    <option value="fortnight">Quincenal</option>
+                    <option value="week">Semanal</option>
+                    <option value="month">Mensual</option>
+                    <option value="year">Anual</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="ledger-date">Fecha de referencia</label>
+                  <input id="ledger-date" name="date" type="date" required>
+                </div>
+                <div class="field">
+                  <label for="ledger-frequency">Concepto</label>
+                  <select id="ledger-frequency" name="frequency">
+                    <option value="all">Todos</option>
+                    <option value="daily">Diario</option>
+                    <option value="weekly">Semanal</option>
+                    <option value="biweekly">Quincenal</option>
+                    <option value="monthly">Mensual</option>
+                  </select>
+                </div>
+                <button class="button button-primary" type="submit" id="ledger-search">Consultar</button>
+              </form>
+              <p class="ledger-note">Los abonos iniciales importados desde Excel no tienen fecha individual: se muestran en ABONO, pero no como RECOGIDO de un día.</p>
+              <div class="ledger-table-wrap">
+                <table class="ledger-table">
+                  <thead>
+                    <tr>
+                      <th>ITEM</th>
+                      <th>FECHAA DE INICIO</th>
+                      <th>DIA</th>
+                      <th>CLIENTES</th>
+                      <th>ZONA</th>
+                      <th>CONCEPTO</th>
+                      <th>CAPITAL</th>
+                      <th>PAPELERIA</th>
+                      <th>INTERES</th>
+                      <th>TOTAL A PAGAR</th>
+                      <th>ABONO</th>
+                      <th>RECOGIDO</th>
+                      <th>RESTANTE</th>
+                    </tr>
+                  </thead>
+                  <tbody id="ledger-rows"></tbody>
+                  <tfoot id="ledger-totals"></tfoot>
+                </table>
+              </div>
+              <div class="empty-state ledger-empty" id="ledger-empty" hidden>
+                <span class="empty-icon" aria-hidden="true">▤</span>
+                <h3>No hay préstamos para este período</h3>
+                <p>Prueba otra fecha o cambia el concepto seleccionado.</p>
+              </div>
+            </section>
+          </section>
+
+          <section class="view-panel" id="new-loan-view" hidden aria-label="Registrar préstamo">
+            <form class="form-card" id="loan-form">
+              <div class="form-heading">
+                <span class="step-badge">01</span>
+                <div><h2>Datos del cliente</h2><p class="muted">Solo necesitamos lo esencial para comenzar.</p></div>
+              </div>
+              <div class="form-grid">
+                <div class="field">
+                  <label for="customer-name">Nombre completo</label>
+                  <input id="customer-name" name="full_name" maxlength="160" autocomplete="name" placeholder="Ej. María López" required>
+                </div>
+                <div class="field">
+                  <label for="customer-document">Cédula</label>
+                  <input id="customer-document" name="document_id" maxlength="40" autocomplete="off" placeholder="Número de identificación" required>
+                </div>
+              </div>
+              <div class="field neighborhood-field">
+                <label for="customer-neighborhood">Barrio</label>
+                <select id="customer-neighborhood" name="neighborhood" required>
+                  <option value="">Selecciona un barrio</option>
+                  {% for neighborhood in neighborhoods %}
+                    <option value="{{ neighborhood }}">{{ neighborhood }}</option>
+                  {% endfor %}
+                  <option value="__other__">Otro barrio</option>
+                </select>
+                <input id="customer-other-neighborhood" type="text" maxlength="120" placeholder="Escribe el barrio" aria-label="Otro barrio" hidden>
+              </div>
+
+              <div class="form-divider"></div>
+              <div class="form-heading">
+                <span class="step-badge">02</span>
+                <div><h2>Condiciones del préstamo</h2><p class="muted">Define el monto y el plan de cuotas.</p></div>
+              </div>
+              <div class="form-grid">
+                <div class="field">
+                  <label for="principal">Monto prestado</label>
+                  <div class="input-prefix"><span>$</span><input id="principal" name="principal" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="0.00" required></div>
+                </div>
+                <div class="field">
+                  <label for="interest-rate">Interés total (%)</label>
+                  <div class="input-suffix"><input id="interest-rate" name="interest_rate" type="number" min="0" step="0.01" inputmode="decimal" value="20" required><span>%</span></div>
+                </div>
+                <div class="field">
+                  <label for="paperwork-fee">Papelería (se cobra aparte)</label>
+                  <div class="input-prefix"><span>$</span><input id="paperwork-fee" name="paperwork_fee" type="number" min="0" step="0.01" inputmode="decimal" value="0"></div>
+                </div>
+                <div class="field">
+                  <label for="frequency">Frecuencia de pago</label>
+                  <select id="frequency" name="frequency" required>
+                    <option value="daily">Diario</option>
+                    <option value="weekly">Semanal</option>
+                    <option value="biweekly">Quincenal</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="start-date">Fecha de inicio</label>
+                  <input id="start-date" name="start_date" type="date" required>
+                </div>
+                <div class="field" id="collector-field" hidden>
+                  <label for="loan-collector">Cobrador asignado</label>
+                  <select id="loan-collector" name="collector">
+                    <option value="">Sin asignar</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="installment-preview">
+                <div><span class="preview-label">Total a pagar (capital + interés)</span><strong id="preview-total">$0.00</strong></div>
+                <div class="preview-separator"></div>
+                <div><span class="preview-label">Frecuencia de cobro</span><strong id="preview-frequency">Diario</strong></div>
+                <p>Préstamo abierto hasta saldar el total. La papelería se cobra aparte.</p>
+              </div>
+              <div class="form-actions">
+                <button class="button button-quiet" type="button" data-view="home">Cancelar</button>
+                <button class="button button-primary" id="create-loan-button" type="submit">Guardar préstamo <span aria-hidden="true">→</span></button>
+              </div>
+            </form>
+          </section>
+
+          <footer class="page-footer">TuNegocio <span>·</span> Tu cartera, bajo control.</footer>
+        </div>
+      </div>
+
+      <nav class="mobile-nav" aria-label="Navegación móvil">
+        <button class="mobile-nav-button is-active" type="button" data-view="home"><span aria-hidden="true">▦</span><span>Inicio</span></button>
+        <button class="mobile-nav-button" type="button" data-view="collections"><span aria-hidden="true">↗</span><span>Cobros</span></button>
+        <button class="mobile-add-button" type="button" data-view="new-loan" aria-label="Nuevo préstamo"><span aria-hidden="true">＋</span></button>
+        <button class="mobile-nav-button" type="button" id="mobile-loans-nav" data-view="home"><span aria-hidden="true">◷</span><span>Préstamos</span></button>
+        <button class="mobile-nav-button" type="button" id="mobile-ledger-nav" data-view="ledger" hidden><span aria-hidden="true">▤</span><span>Libro</span></button>
+        <button class="mobile-nav-button" type="button" id="mobile-logout"><span aria-hidden="true">↪</span><span>Salir</span></button>
+      </nav>
+    </section>
+  </main>
+
+  <dialog class="payment-dialog" id="payment-dialog" aria-labelledby="payment-title">
+    <form class="payment-form" id="payment-form">
+      <button class="dialog-close" type="button" id="close-payment" aria-label="Cerrar">×</button>
+      <p class="eyebrow">REGISTRO DE COBRO</p>
+      <h2 id="payment-title">Registrar pago</h2>
+      <p class="muted" id="payment-customer">Cliente</p>
+      <input id="payment-loan-id" type="hidden">
+      <div class="field">
+        <label for="payment-amount">Monto recibido</label>
+        <div class="input-prefix"><span>$</span><input id="payment-amount" type="number" min="0.01" step="0.01" inputmode="decimal" required></div>
+        <p class="field-hint" id="payment-suggestion">Cuota sugerida; puedes cambiarla por el valor recibido.</p>
+      </div>
+      <div class="field">
+        <label for="payment-method">Método de pago</label>
+        <select id="payment-method">
+          <option value="cash">Efectivo</option>
+          <option value="transfer">Transferencia</option>
+          <option value="other">Otro</option>
+        </select>
+      </div>
+      <div class="field" id="payment-collector-field" hidden>
+        <label for="payment-collector">Cobrador que recibió el pago</label>
+        <select id="payment-collector"><option value="">Selecciona un cobrador</option></select>
+      </div>
+      <div class="payment-balance">Saldo pendiente <strong id="payment-balance">$0.00</strong></div>
+      <div class="form-actions">
+        <button class="button button-quiet" type="button" id="cancel-payment">Cancelar</button>
+        <button class="button button-primary" id="submit-payment" type="submit">Confirmar pago</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

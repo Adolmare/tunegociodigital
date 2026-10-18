@@ -1,9 +1,10 @@
 ﻿import pytest
 from asgiref.sync import async_to_sync, sync_to_async
 from decimal import Decimal
-from datetime import timedelta
+from datetime import date, timedelta
 from django.urls import reverse
 from django.utils import timezone
+from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -11,10 +12,99 @@ from accounts.models import User
 from accounting.models import EventInbox
 from customers.models import Customer
 from employees.models import Employee
+from core.context import clear_tenant, set_tenant
 from loans.models import CollectionRoute, Loan, LoanInstallment, LoanPayment
+from loans.services import create_loan, ledger_period_dates
 from loans.views import LoanPaymentEventStreamView
 from tenants.models import Membership, Tool
 from tenants.services import enable_tool
+
+
+@pytest.mark.django_db
+def test_loans_frontend_renders_mobile_portal(client):
+    response = client.get(reverse("loans-frontend"))
+
+    assert response.status_code == status.HTTP_200_OK
+    assert b"Nuevo pr\xc3\xa9stamo" in response.content
+    assert b"Barrio" in response.content
+    assert b"VENECIA" in response.content
+    assert b"Cuota sugerida" in response.content
+    assert b"Libro de cartera" in response.content
+    assert b"RECOGIDO" in response.content
+    loan_frequency = response.content.split(
+        b'<select id="frequency" name="frequency" required>', 1
+    )[1].split(b"</select>", 1)[0]
+    assert b'option value="monthly"' not in loan_frequency
+    assert b"Usar GPS" not in response.content
+    assert b"portal.css" in response.content
+    assert b"portal.js" in response.content
+
+
+@pytest.mark.parametrize(
+    ("period", "selected", "expected_start", "expected_end"),
+    [
+        ("year", date(2026, 10, 17), date(2026, 1, 1), date(2026, 12, 31)),
+        ("month", date(2026, 2, 17), date(2026, 2, 1), date(2026, 2, 28)),
+        ("week", date(2026, 10, 17), date(2026, 10, 12), date(2026, 10, 18)),
+        ("fortnight", date(2026, 10, 17), date(2026, 10, 16), date(2026, 10, 31)),
+        ("day", date(2026, 10, 17), date(2026, 10, 17), date(2026, 10, 17)),
+    ],
+)
+def test_ledger_period_dates(period, selected, expected_start, expected_end):
+    assert ledger_period_dates(period, selected) == (expected_start, expected_end)
+
+
+@pytest.mark.django_db
+def test_owner_ledger_reports_period_payments_and_is_owner_only(
+    two_tenants, client_for, rls_context, seeded_tools
+):
+    owner, tenant, employee_user, employee, customer = _make_employee_and_customer(
+        two_tenants, rls_context
+    )
+    _enable_loans(owner, tenant, rls_context)
+    set_tenant(tenant)
+    loan = create_loan(
+        tenant=tenant,
+        customer=customer,
+        collector=employee,
+        principal="1000.00",
+        interest_rate="20.00",
+        is_open_ended=True,
+        frequency="daily",
+        start_date=timezone.localdate(),
+        opening_paid="30.00",
+        import_reference="Libro2.xlsx:7",
+    )
+    clear_tenant()
+
+    payment = _post_payment(client_for(employee_user, tenant), loan.pk, "20.00")
+    assert payment.status_code == status.HTTP_201_CREATED
+
+    owner_response = client_for(owner, tenant).get(
+        reverse("loan-ledger"),
+        {
+            "period": "day",
+            "date": timezone.localdate().isoformat(),
+            "frequency": "daily",
+        },
+    )
+    assert owner_response.status_code == status.HTTP_200_OK
+    assert owner_response.data["period_start"] == timezone.localdate().isoformat()
+    assert len(owner_response.data["rows"]) == 1
+    row = owner_response.data["rows"][0]
+    assert row["item"] == 7
+    assert row["customer"] == customer.full_name
+    assert row["concept"] == "DIARIO"
+    assert row["abono"] == "30.00"
+    assert row["collected"] == "20.00"
+    assert row["remaining"] == "1150.00"
+    assert owner_response.data["totals"]["collected"] == "20.00"
+
+    manager = User.objects.create(email="ledger-manager@example.test")
+    rls_context(owner, tenant)
+    Membership.objects.create(user=manager, tenant=tenant, role=Membership.Role.MANAGER)
+    manager_response = client_for(manager, tenant).get(reverse("loan-ledger"))
+    assert manager_response.status_code == status.HTTP_403_FORBIDDEN
 
 
 def _make_employee_and_customer(two_tenants, rls_context, tenant_key="tenant_a"):
@@ -163,6 +253,127 @@ def test_employee_can_list_and_create_loans_and_payments(
         {"amount": "1.00"},
         format="json",
     ).status_code == status.HTTP_405_METHOD_NOT_ALLOWED
+
+
+@pytest.mark.django_db
+def test_open_ended_loan_accepts_variable_payments_and_separate_paperwork(
+    two_tenants, client_for, rls_context, seeded_tools
+):
+    owner, tenant, employee_user, employee, customer = _make_employee_and_customer(
+        two_tenants, rls_context
+    )
+    _enable_loans(owner, tenant, rls_context)
+    owner_client = client_for(owner, tenant)
+    response = owner_client.post(
+        reverse("loan-list"),
+        {
+            "customer": str(customer.pk),
+            "collector": str(employee.pk),
+            "principal": "1000.00",
+            "interest_rate": "20.00",
+            "is_open_ended": True,
+            "paperwork_fee": "5000.00",
+            "frequency": "daily",
+            "start_date": timezone.localdate().isoformat(),
+        },
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.data["is_open_ended"] is True
+    assert response.data["collection_amount"] == "40.00"
+    assert response.data["installments"] == 30
+    assert response.data["total_payable"] == "1200.00"
+    assert response.data["balance"] == "1200.00"
+    assert response.data["paperwork_fee"] == "5000.00"
+    assert response.data["installment_schedule"][0]["amount_due"] == "40.00"
+
+    payment_response = _post_payment(client_for(employee_user, tenant), response.data["id"], "20.00")
+    assert payment_response.status_code == status.HTTP_201_CREATED
+
+    loan_response = owner_client.get(reverse("loan-detail", args=[response.data["id"]]))
+    assert loan_response.data["balance"] == "1180.00"
+    assert loan_response.data["installment_schedule"][0]["amount_paid"] == "20.00"
+
+
+@pytest.mark.django_db
+def test_open_ended_import_stores_aggregate_paid_without_fake_payments(
+    two_tenants, rls_context
+):
+    owner = two_tenants["user_a"]
+    tenant = two_tenants["tenant_a"]
+    rls_context(owner, tenant)
+    set_tenant(tenant)
+    customer = Customer.unscoped.create(tenant=tenant, full_name="Cliente importado")
+
+    loan = create_loan(
+        tenant=tenant,
+        customer=customer,
+        principal="500.00",
+        interest_rate="20.00",
+        installments=1,
+        is_open_ended=True,
+        paperwork_fee="2000.00",
+        opening_paid="350.00",
+        frequency="weekly",
+        start_date=timezone.localdate() - timedelta(days=21),
+        import_reference="Libro2.xlsx:1",
+    )
+
+    assert loan.total_payable == Decimal("600.00")
+    assert loan.opening_paid == Decimal("350.00")
+    assert loan.balance == Decimal("250.00")
+    assert loan.paperwork_fee == Decimal("2000.00")
+    assert loan.is_open_ended is True
+    assert LoanPayment.unscoped.filter(loan=loan).count() == 0
+    installments = list(LoanInstallment.unscoped.filter(loan=loan).order_by("number"))
+    assert len(installments) == 6
+    assert installments[0].amount_due == Decimal("100.00")
+    assert installments[0].amount_paid == Decimal("100.00")
+    assert installments[3].amount_paid == Decimal("50.00")
+    assert sum((row.amount_paid for row in installments), Decimal("0.00")) == Decimal("350.00")
+    clear_tenant()
+
+
+@pytest.mark.parametrize(
+    ("frequency", "expected_collection"),
+    [
+        ("daily", Decimal("4000.00")),
+        ("weekly", Decimal("20000.00")),
+        ("biweekly", Decimal("40000.00")),
+    ],
+)
+@pytest.mark.django_db
+def test_open_ended_collection_amount_scales_with_capital(
+    two_tenants, rls_context, frequency, expected_collection
+):
+    owner = two_tenants["user_a"]
+    tenant = two_tenants["tenant_a"]
+    rls_context(owner, tenant)
+    set_tenant(tenant)
+    customer = Customer.unscoped.create(
+        tenant=tenant,
+        full_name=f"Cliente {frequency}",
+    )
+
+    loan = create_loan(
+        tenant=tenant,
+        customer=customer,
+        principal="100000.00",
+        interest_rate="20.00",
+        installments=1,
+        is_open_ended=True,
+        frequency=frequency,
+        start_date=timezone.localdate(),
+    )
+
+    assert loan.collection_amount == expected_collection
+    assert loan.installments == int(Decimal("120000.00") / expected_collection)
+    schedule = list(LoanInstallment.unscoped.filter(loan=loan).order_by("number"))
+    assert len(schedule) == loan.installments
+    assert all(item.amount_due == expected_collection for item in schedule[:-1])
+    assert sum((item.amount_due for item in schedule), Decimal("0.00")) == loan.total_payable
+    clear_tenant()
 
 
 @pytest.mark.django_db
@@ -336,10 +547,7 @@ def test_loan_can_create_customer_and_daily_collection_queue(
             "customer_details": {
                 "full_name": "Cliente nuevo",
                 "document_id": "CC-999",
-                "location": {
-                    "type": "Point",
-                    "coordinates": [-74.08175, 4.60971],
-                },
+                "neighborhood": "SAN RAFAEL",
             },
             "collector": str(employee.pk),
             "principal": "1000.00",
@@ -354,10 +562,12 @@ def test_loan_can_create_customer_and_daily_collection_queue(
     loan_id = response.data["id"]
     assert response.data["customer_name"] == "Cliente nuevo"
     assert response.data["document_id"] == "CC-999"
-    assert response.data["location"] == {
-        "type": "Point",
-        "coordinates": [-74.08175, 4.60971],
-    }
+    assert response.data["neighborhood"] == "SAN RAFAEL"
+    assert response.data["location"] is None
+    assert (
+        Customer.unscoped.get(tenant=tenant, full_name="Cliente nuevo").neighborhood
+        == "SAN RAFAEL"
+    )
     assert response.data["frequency"] == "daily"
 
     queue_response = client_for(employee_user, tenant).get(

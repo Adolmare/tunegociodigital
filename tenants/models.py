@@ -16,7 +16,7 @@ class Tenant(models.Model):
     business_type = models.ForeignKey(BusinessType, null=True, on_delete=models.SET_NULL)
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.TRIAL)
     timezone = models.CharField(max_length=50, default="UTC")
-    currency = models.CharField(max_length=3, default="USD")
+    currency = models.CharField(max_length=3, default="COP")
     created_at = models.DateTimeField(auto_now_add=True)
 
 class Membership(models.Model):

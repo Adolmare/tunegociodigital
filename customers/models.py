@@ -8,6 +8,7 @@ class Customer(TenantOwnedModel):
     phone = models.CharField(max_length=40, blank=True)
     email = models.EmailField(blank=True, default="")
     document_id = models.CharField(max_length=40, blank=True, default="")
+    neighborhood = models.CharField(max_length=120, blank=True, default="")
     address = models.TextField(blank=True)
     location = models.PointField(srid=4326, null=True, blank=True)
     notes = models.TextField(blank=True)

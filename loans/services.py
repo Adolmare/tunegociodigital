@@ -13,10 +13,24 @@ from customers.models import Customer
 from .models import Loan, LoanInstallment, LoanPayment, PaymentAllocation
 
 CENT = Decimal("0.01")
+COLLECTION_AMOUNTS_PER_100K = {
+    "daily": Decimal("4000.00"),
+    "weekly": Decimal("20000.00"),
+    "biweekly": Decimal("40000.00"),
+}
 
 
 def _money(value):
     return Decimal(value).quantize(CENT, rounding=ROUND_HALF_UP)
+
+
+def _collection_amount(principal, frequency):
+    rate = COLLECTION_AMOUNTS_PER_100K.get(frequency)
+    if rate is None:
+        raise ValidationError(
+            {"frequency": "Las cuotas automáticas están disponibles para diario, semanal o quincenal."}
+        )
+    return _money(Decimal(principal) * rate / Decimal("100000"))
 
 
 def _due_date(start_date, frequency, installment_number):
@@ -34,6 +48,33 @@ def _due_date(start_date, frequency, installment_number):
     return date(year, month, day)
 
 
+def ledger_period_dates(period, selected_date):
+    if period == "year":
+        return date(selected_date.year, 1, 1), date(selected_date.year, 12, 31)
+    if period == "month":
+        first_day = date(selected_date.year, selected_date.month, 1)
+        last_day = date(
+            selected_date.year,
+            selected_date.month,
+            calendar.monthrange(selected_date.year, selected_date.month)[1],
+        )
+        return first_day, last_day
+    if period == "week":
+        first_day = selected_date - timedelta(days=selected_date.weekday())
+        return first_day, first_day + timedelta(days=6)
+    if period == "fortnight":
+        if selected_date.day <= 15:
+            return date(selected_date.year, selected_date.month, 1), date(
+                selected_date.year, selected_date.month, 15
+            )
+        return date(selected_date.year, selected_date.month, 16), date(
+            selected_date.year,
+            selected_date.month,
+            calendar.monthrange(selected_date.year, selected_date.month)[1],
+        )
+    return selected_date, selected_date
+
+
 @transaction.atomic
 def create_loan(
     *,
@@ -42,10 +83,14 @@ def create_loan(
     customer_details=None,
     principal,
     interest_rate,
-    installments,
+    installments=None,
     frequency,
     start_date,
     collector=None,
+    is_open_ended=False,
+    paperwork_fee=0,
+    opening_paid=0,
+    import_reference="",
 ):
     if customer is None and customer_details is None:
         raise ValidationError({"customer": "Selecciona o registra un cliente."})
@@ -56,11 +101,12 @@ def create_loan(
 
     principal = _money(principal)
     interest_rate = Decimal(interest_rate)
+    paperwork_fee = _money(paperwork_fee)
     if principal <= 0:
         raise ValidationError({"principal": "El capital debe ser mayor que cero."})
     if interest_rate < 0:
         raise ValidationError({"interest_rate": "La tasa no puede ser negativa."})
-    if installments < 1:
+    if not is_open_ended and (installments is None or installments < 1):
         raise ValidationError({"installments": "Debe existir al menos una cuota."})
     if customer.tenant_id != tenant.pk:
         raise ValidationError({"customer": "El cliente debe pertenecer a la empresa activa."})
@@ -70,11 +116,27 @@ def create_loan(
     # The rate is a percentage of the full principal, not a periodic rate.
     interest = _money(principal * interest_rate / Decimal("100"))
     total_payable = _money(principal + interest)
-    total_cents = int(total_payable * 100)
-    if installments > total_cents:
+    opening_paid = _money(opening_paid)
+    if opening_paid < 0 or opening_paid > total_payable:
         raise ValidationError(
-            {"installments": "El número de cuotas no puede exceder los centavos a cobrar."}
+            {"opening_paid": "El abono inicial debe estar entre cero y el total a pagar."}
         )
+    if is_open_ended:
+        collection_amount = _collection_amount(principal, frequency)
+        collection_cents = int(collection_amount * 100)
+        if collection_cents < 1:
+            raise ValidationError(
+                {"principal": "El capital es demasiado bajo para calcular una cuota positiva."}
+            )
+        total_cents = int(total_payable * 100)
+        installments = (total_cents + collection_cents - 1) // collection_cents
+    else:
+        collection_amount = Decimal("0.00")
+        total_cents = int(total_payable * 100)
+        if installments > total_cents:
+            raise ValidationError(
+                {"installments": "El número de cuotas no puede exceder los centavos a cobrar."}
+            )
 
     loan = Loan.objects.create(
         tenant=tenant,
@@ -83,23 +145,50 @@ def create_loan(
         principal=principal,
         interest_rate=interest_rate,
         installments=installments,
+        is_open_ended=is_open_ended,
         frequency=frequency,
         start_date=start_date,
+        collection_amount=collection_amount,
+        paperwork_fee=paperwork_fee,
         total_payable=total_payable,
-        balance=total_payable,
-        status="active",
+        opening_paid=opening_paid,
+        balance=_money(total_payable - opening_paid),
+        status="paid" if opening_paid == total_payable else "active",
+        import_reference=import_reference,
     )
 
-    base_cents, remainder = divmod(total_cents, installments)
-    for index in range(1, installments + 1):
-        amount_cents = base_cents + (1 if index <= remainder else 0)
-        LoanInstallment.objects.create(
-            tenant=tenant,
-            loan=loan,
-            number=index,
-            due_date=_due_date(start_date, frequency, index),
-            amount_due=Decimal(amount_cents) / 100,
-        )
+    if is_open_ended:
+        remaining_paid = opening_paid
+        for index in range(1, installments + 1):
+            amount_due = min(collection_amount, total_payable - collection_amount * (index - 1))
+            amount_paid = min(remaining_paid, amount_due)
+            LoanInstallment.objects.create(
+                tenant=tenant,
+                loan=loan,
+                number=index,
+                due_date=_due_date(start_date, frequency, index),
+                amount_due=amount_due,
+                amount_paid=amount_paid,
+                status=(
+                    "paid"
+                    if amount_paid == amount_due
+                    else "partial"
+                    if amount_paid > 0
+                    else "pending"
+                ),
+            )
+            remaining_paid = _money(remaining_paid - amount_paid)
+    else:
+        base_cents, remainder = divmod(total_cents, installments)
+        for index in range(1, installments + 1):
+            amount_cents = base_cents + (1 if index <= remainder else 0)
+            LoanInstallment.objects.create(
+                tenant=tenant,
+                loan=loan,
+                number=index,
+                due_date=_due_date(start_date, frequency, index),
+                amount_due=Decimal(amount_cents) / 100,
+            )
     return loan
 
 
@@ -172,7 +261,15 @@ def register_payment(*, loan, collector, amount, method="cash", user=None):
         installment.status = (
             "paid" if installment.amount_paid == installment.amount_due else "partial"
         )
-        installment.save(update_fields=["amount_paid", "status", "updated_at"])
+        update_fields = ["amount_paid", "status", "updated_at"]
+        if loan.is_open_ended and installment.amount_paid < installment.amount_due:
+            installment.due_date = _due_date(
+                timezone.localdate(),
+                loan.frequency,
+                1,
+            )
+            update_fields.append("due_date")
+        installment.save(update_fields=update_fields)
         allocations.append((installment, applied))
         remaining = _money(remaining - applied)
         if remaining == 0:
@@ -244,7 +341,11 @@ def reverse_payment(*, payment, user):
             if installment.amount_paid > 0
             else "pending"
         )
-        installment.save(update_fields=["amount_paid", "status", "updated_at"])
+        update_fields = ["amount_paid", "status", "updated_at"]
+        if loan.is_open_ended:
+            installment.due_date = timezone.localdate()
+            update_fields.append("due_date")
+        installment.save(update_fields=update_fields)
         PaymentAllocation.objects.create(
             tenant_id=loan.tenant_id,
             payment=reversal,

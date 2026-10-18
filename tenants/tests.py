@@ -9,6 +9,13 @@ from tenants.models import BusinessType, Membership, Tenant
 
 
 @pytest.mark.django_db
+def test_tenants_default_to_colombian_pesos():
+    tenant = Tenant.objects.create(name="Inova", slug="inova")
+
+    assert tenant.currency == "COP"
+
+
+@pytest.mark.django_db
 def test_tenant_list_only_returns_user_memberships(two_tenants, client_for):
     client = client_for(two_tenants["user_a"])
 

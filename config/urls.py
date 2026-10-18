@@ -20,6 +20,8 @@ from django.http import HttpResponse
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from loans.frontend import LoanPortalView
+
 
 def health_check(request):
     with connection.cursor() as cursor:
@@ -29,6 +31,7 @@ def health_check(request):
 
 urlpatterns = [
     path("health/", health_check, name="health-check"),
+    path("loans/", LoanPortalView.as_view(), name="loans-frontend"),
     path("admin/", admin.site.urls),
     path("api/v1/auth/", include("accounts.urls")),
     path("api/v1/", include("tenants.urls")),

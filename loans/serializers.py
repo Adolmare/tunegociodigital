@@ -19,34 +19,56 @@ from .models import (
 )
 
 
-class LoanCustomerInputSerializer(serializers.ModelSerializer):
-    location = GeometryField()
+class LoanLedgerQuerySerializer(serializers.Serializer):
+    PERIOD_CHOICES = (
+        ("year", "Anual"),
+        ("month", "Mensual"),
+        ("week", "Semanal"),
+        ("fortnight", "Quincenal"),
+        ("day", "Diario"),
+    )
+    FREQUENCY_CHOICES = (
+        ("all", "Todos"),
+        ("daily", "Diario"),
+        ("weekly", "Semanal"),
+        ("biweekly", "Quincenal"),
+        ("monthly", "Mensual"),
+    )
 
-    def validate_location(self, location):
-        if location.geom_type != "Point":
-            raise serializers.ValidationError("La ubicación debe ser un punto GPS.")
-        if location.srid != 4326:
-            raise serializers.ValidationError(
-                "La ubicación debe usar coordenadas WGS84 (EPSG:4326)."
-            )
-        if not -180 <= location.x <= 180 or not -90 <= location.y <= 90:
-            raise serializers.ValidationError(
-                "Las coordenadas deben estar en el rango de longitud/latitud."
-            )
-        return location
+    period = serializers.ChoiceField(choices=PERIOD_CHOICES, default="day")
+    date = serializers.DateField(required=False, default=timezone.localdate)
+    frequency = serializers.ChoiceField(
+        choices=FREQUENCY_CHOICES,
+        required=False,
+        default="all",
+    )
+
+
+class LoanCustomerInputSerializer(serializers.ModelSerializer):
+    location = GeometryField(required=False, allow_null=True)
+
+    def validate_neighborhood(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Selecciona o escribe un barrio.")
+        return value
 
     class Meta:
         model = Customer
-        fields = ("full_name", "document_id", "location")
+        fields = ("full_name", "document_id", "neighborhood", "location")
         extra_kwargs = {
             "full_name": {"required": True},
             "document_id": {"required": True, "allow_blank": False},
+            "neighborhood": {"required": True, "allow_blank": False},
         }
 
 
 class LoanInstallmentSerializer(serializers.ModelSerializer):
     customer_name = serializers.CharField(source="loan.customer.full_name", read_only=True)
     document_id = serializers.CharField(source="loan.customer.document_id", read_only=True)
+    neighborhood = serializers.CharField(source="loan.customer.neighborhood", read_only=True)
+    is_open_ended = serializers.BooleanField(source="loan.is_open_ended", read_only=True)
+    frequency = serializers.CharField(source="loan.frequency", read_only=True)
     location = GeometryField(source="loan.customer.location", read_only=True)
     pending_amount = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
@@ -89,6 +111,7 @@ class LoanSerializer(serializers.ModelSerializer):
     collector = TenantScopedRelatedField(required=False, allow_null=True)
     customer_name = serializers.CharField(source="customer.full_name", read_only=True)
     document_id = serializers.CharField(source="customer.document_id", read_only=True)
+    neighborhood = serializers.CharField(source="customer.neighborhood", read_only=True)
     location = GeometryField(source="customer.location", read_only=True)
     status = serializers.SerializerMethodField()
     installment_schedule = LoanInstallmentSerializer(
@@ -101,12 +124,24 @@ class LoanSerializer(serializers.ModelSerializer):
         decimal_places=2,
         min_value=Decimal("0.01"),
     )
+    installments = serializers.IntegerField(min_value=1, required=False)
+    paperwork_fee = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        min_value=Decimal("0.00"),
+        required=False,
+        default=Decimal("0.00"),
+    )
+    collection_amount = serializers.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        read_only=True,
+    )
     interest_rate = serializers.DecimalField(
         max_digits=6,
         decimal_places=2,
         min_value=Decimal("0.00"),
     )
-    installments = serializers.IntegerField(min_value=1)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -128,13 +163,22 @@ class LoanSerializer(serializers.ModelSerializer):
                 "principal",
                 "interest_rate",
                 "installments",
+                "is_open_ended",
+                "paperwork_fee",
                 "frequency",
                 "start_date",
             ):
                 self.fields[field_name].read_only = True
 
     def to_internal_value(self, data):
-        server_managed_fields = {"total_payable", "balance", "status"}
+        server_managed_fields = {
+            "total_payable",
+            "opening_paid",
+            "balance",
+            "status",
+            "import_reference",
+            "collection_amount",
+        }
         supplied = server_managed_fields.intersection(data)
         if supplied:
             raise serializers.ValidationError({
@@ -145,6 +189,10 @@ class LoanSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         if self.instance is None:
+            if not attrs.get("is_open_ended", False) and "installments" not in attrs:
+                raise serializers.ValidationError(
+                    {"installments": "Indica el número de cuotas del préstamo."}
+                )
             customer = attrs.get("customer")
             customer_details = attrs.get("customer_details")
             if (customer is None) == (customer_details is None):
@@ -173,8 +221,11 @@ class LoanSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "total_payable",
+            "collection_amount",
+            "opening_paid",
             "balance",
             "status",
+            "import_reference",
             "installment_schedule",
             "customer_name",
             "document_id",

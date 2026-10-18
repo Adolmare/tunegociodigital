@@ -3,9 +3,11 @@ from datetime import datetime
 import json
 import time
 import uuid
+from decimal import Decimal
 
 from asgiref.sync import sync_to_async
 from django.db import transaction
+from django.db.models import Case, DecimalField, F, Q, Sum, When
 from django.http import StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import status
@@ -30,6 +32,7 @@ from employees.models import Employee
 from .models import CollectionRoute, Loan, LoanInstallment, LoanPayment, RouteStop
 from .serializers import (
     CollectionRouteSerializer,
+    LoanLedgerQuerySerializer,
     LoanInstallmentSerializer,
     LoanPaymentSerializer,
     LoanSerializer,
@@ -38,6 +41,7 @@ from .serializers import (
 from .services import (
     create_loan,
     overdue_installments,
+    ledger_period_dates,
     register_payment,
     reverse_payment,
 )
@@ -65,6 +69,7 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
         "retrieve": "employee",
         "create": "employee",
         "collection_today": "employee",
+        "ledger": "owner",
         "destroy": "owner",
         "update": "manager",
         "partial_update": "manager",
@@ -115,6 +120,160 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
             data = LoanInstallmentSerializer(page, many=True).data
             return self.get_paginated_response(data)
         return Response(LoanInstallmentSerializer(installments, many=True).data)
+
+    @action(detail=False, methods=["get"])
+    def ledger(self, request):
+        filters = LoanLedgerQuerySerializer(data=request.query_params)
+        filters.is_valid(raise_exception=True)
+        period = filters.validated_data["period"]
+        selected_date = filters.validated_data["date"]
+        frequency = filters.validated_data["frequency"]
+        period_start, period_end = ledger_period_dates(period, selected_date)
+
+        loans = list(Loan.objects.select_related("customer"))
+        imported_items = {}
+        for loan in loans:
+            reference = loan.import_reference.rpartition(":")[2]
+            if reference.isdigit():
+                imported_items[loan.pk] = int(reference)
+        loans.sort(
+            key=lambda loan: (
+                (0, imported_items[loan.pk], "")
+                if loan.pk in imported_items
+                else (1, loan.created_at, str(loan.pk))
+            )
+        )
+        next_item = max(imported_items.values(), default=0)
+        item_numbers = {}
+        for loan in loans:
+            if loan.pk in imported_items:
+                item_numbers[loan.pk] = imported_items[loan.pk]
+            else:
+                next_item += 1
+                item_numbers[loan.pk] = next_item
+        loans = [loan for loan in loans if loan.start_date <= period_end]
+
+        payments = (
+            LoanPayment.objects.filter(
+                loan_id__in=[loan.pk for loan in loans],
+                paid_at__date__lte=period_end,
+            )
+            .annotate(
+                signed_amount=Case(
+                    When(direction="reversal", then=-F("amount")),
+                    default=F("amount"),
+                    output_field=DecimalField(max_digits=14, decimal_places=2),
+                )
+            )
+            .values("loan_id")
+            .annotate(
+                before_period=Sum(
+                    "signed_amount",
+                    filter=Q(paid_at__date__lt=period_start),
+                ),
+                in_period=Sum(
+                    "signed_amount",
+                    filter=Q(
+                        paid_at__date__gte=period_start,
+                        paid_at__date__lte=period_end,
+                    ),
+                ),
+            )
+        )
+        payment_totals = {
+            row["loan_id"]: (
+                row["before_period"] or Decimal("0.00"),
+                row["in_period"] or Decimal("0.00"),
+            )
+            for row in payments
+        }
+
+        frequency_labels = {
+            "daily": "DIARIO",
+            "weekly": "SEMANAL",
+            "biweekly": "QUINCENAL",
+            "monthly": "MENSUAL",
+        }
+        weekdays = (
+            "lunes",
+            "martes",
+            "miércoles",
+            "jueves",
+            "viernes",
+            "sábado",
+            "domingo",
+        )
+        rows = []
+        totals = {
+            key: Decimal("0.00")
+            for key in (
+                "principal",
+                "paperwork_fee",
+                "interest",
+                "total_payable",
+                "abono",
+                "collected",
+                "remaining",
+            )
+        }
+        for loan in loans:
+            if frequency != "all" and loan.frequency != frequency:
+                continue
+            historical_paid, period_paid = payment_totals.get(
+                loan.pk,
+                (Decimal("0.00"), Decimal("0.00")),
+            )
+            abono = loan.opening_paid + historical_paid
+            collected = period_paid
+            remaining = loan.total_payable - abono - collected
+            interest = loan.total_payable - loan.principal
+            rows.append(
+                {
+                    "item": item_numbers[loan.pk],
+                    "date": loan.start_date.isoformat(),
+                    "day": weekdays[loan.start_date.weekday()],
+                    "customer": loan.customer.full_name,
+                    "neighborhood": loan.customer.neighborhood,
+                    "concept": frequency_labels.get(loan.frequency, loan.frequency.upper()),
+                    "principal": loan.principal,
+                    "paperwork_fee": loan.paperwork_fee,
+                    "interest": interest,
+                    "total_payable": loan.total_payable,
+                    "abono": abono,
+                    "collected": collected,
+                    "remaining": remaining,
+                }
+            )
+            totals["principal"] += loan.principal
+            totals["paperwork_fee"] += loan.paperwork_fee
+            totals["interest"] += interest
+            totals["total_payable"] += loan.total_payable
+            totals["abono"] += abono
+            totals["collected"] += collected
+            totals["remaining"] += remaining
+
+        rows.sort(key=lambda row: row["item"])
+        data = [
+            {
+                **row,
+                **{
+                    key: str(value)
+                    for key, value in row.items()
+                    if isinstance(value, Decimal)
+                },
+            }
+            for row in rows
+        ]
+        return Response(
+            {
+                "period": period,
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+                "frequency": frequency,
+                "rows": data,
+                "totals": {key: str(value) for key, value in totals.items()},
+            }
+        )
 
 
 class LoanPaymentViewSet(ActionMinRoleMixin, TenantViewSet):

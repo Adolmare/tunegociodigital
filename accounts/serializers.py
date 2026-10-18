@@ -1,4 +1,5 @@
 from django.contrib.auth.password_validation import validate_password
+from django.contrib.auth.validators import UnicodeUsernameValidator
 from rest_framework import serializers
 
 from tenants.models import Membership
@@ -8,10 +9,14 @@ from .models import User
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
+    username = serializers.CharField(
+        max_length=150,
+        validators=[UnicodeUsernameValidator()],
+    )
 
     class Meta:
         model = User
-        fields = ("id", "email", "full_name", "password")
+        fields = ("id", "username", "email", "full_name", "password")
         read_only_fields = ("id",)
 
     def create(self, validated_data):
@@ -21,15 +26,22 @@ class RegisterSerializer(serializers.ModelSerializer):
 class MeSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ("id", "email", "full_name", "created_at")
-        read_only_fields = ("id", "email", "created_at")
+        fields = ("id", "username", "email", "full_name", "created_at")
+        read_only_fields = ("id", "username", "email", "created_at")
 
 
 class MyMembershipSerializer(serializers.ModelSerializer):
     tenant_id = serializers.UUIDField(source="tenant.id", read_only=True)
     tenant_name = serializers.CharField(source="tenant.name", read_only=True)
     tenant_slug = serializers.CharField(source="tenant.slug", read_only=True)
+    tenant_currency = serializers.CharField(source="tenant.currency", read_only=True)
 
     class Meta:
         model = Membership
-        fields = ("tenant_id", "tenant_name", "tenant_slug", "role")
+        fields = (
+            "tenant_id",
+            "tenant_name",
+            "tenant_slug",
+            "tenant_currency",
+            "role",
+        )
