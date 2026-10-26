@@ -244,7 +244,8 @@
     const isOwner = state.role === "owner";
     document.getElementById("ledger-nav").hidden = !isOwner;
     document.getElementById("mobile-ledger-nav").hidden = !isOwner;
-    document.getElementById("mobile-loans-nav").hidden = isOwner;
+    document.getElementById("mobile-cashflow-nav").hidden = false;
+    document.getElementById("mobile-customer-nav").hidden = false;
     document.getElementById("today-label").textContent = new Intl.DateTimeFormat("es", {
       weekday: "long",
       day: "numeric",
@@ -980,5 +981,6 @@
     }
   }
 
+  toggleRegistration(false);
   restoreSession();
 })();
