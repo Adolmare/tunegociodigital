@@ -1,7 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .cashflow import CollectorCashSummaryView, CollectorDailyCashViewSet, CollectorExpenseViewSet
+from .cashflow import (\n    CollectorCashSummaryView,\n    CollectorDailyCashViewSet,\n    CollectorExpenseViewSet,\n    CustomerLoanSummaryView,\n)
 from .views import (
     CollectionRouteViewSet,
     LoanPaymentEventStreamView,
@@ -20,7 +20,7 @@ router.register(r"route-stops", RouteStopViewSet, basename="route-stop")
 router.register(r"collector-daily-cash", CollectorDailyCashViewSet, basename="collector-daily-cash")
 router.register(r"collector-expenses", CollectorExpenseViewSet, basename="collector-expense")
 
-urlpatterns = [
+urlpatterns = [\n    path("customer-loan-summary/", CustomerLoanSummaryView.as_view(), name="customer-loan-summary"),
     path("collector-cash-summary/", CollectorCashSummaryView.as_view(), name="collector-cash-summary"),
     path(
         "loan-payment-events/stream/",
