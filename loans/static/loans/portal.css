@@ -342,3 +342,14 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
   .amortization-loan h4 { font-size: 11px; }
   .amortization-loan p { font-size: 10px; }
 }
+
+.employee-request-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.employee-request-actions .button { min-height: 36px; padding: 0 13px; }
+@media (max-width: 680px) {
+  .mobile-nav { justify-content: flex-start; gap: 7px; overflow-x: auto; }
+  .mobile-nav-button { flex: 0 0 42px; }
+  .mobile-add-button { flex: 0 0 46px; }
+  .employee-request-row { grid-template-columns: minmax(0, 1fr); }
+  .employee-request-actions { grid-column: 1 / -1; }
+  .employee-request-actions .button { flex: 1; }
+}
