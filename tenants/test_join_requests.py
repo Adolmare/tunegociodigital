@@ -39,6 +39,7 @@ def test_employee_join_request_requires_owner_acceptance(
     assert Membership.objects.filter(
         user=applicant, tenant=tenant, role=Membership.Role.EMPLOYEE, is_active=True
     ).exists()
+    rls_context(owner, tenant)
     assert Employee.unscoped.filter(tenant=tenant, user=applicant, is_active=True).exists()
 
 
