@@ -35,9 +35,9 @@ La fórmula informa un saldo esperado de caja según los movimientos registrados
 
 El endpoint agrupa en una sola fila todos los préstamos de cada cliente. Las sumas de pagos se consultan por préstamo en una agregación separada, evitando que los joins de cuotas o pagos multipliquen el capital o la papelería. Cada fila conserva un arreglo `loans` con el detalle individual para abrir el perfil y revisar sus fechas, frecuencia, valores y saldos.
 
-## Pendiente antes de producción
+## Validación pendiente antes de producción
 
-- Ejecutar las migraciones y toda la suite de pruebas contra PostgreSQL/PostGIS.
-- Añadir pruebas de regresión de RLS para ambos modelos nuevos y para el resumen por cliente.
-- Conectar estos endpoints a la interfaz del portal; el registro de datos en API no implica que los formularios ya estén visibles en el frontend.
-- Implementar el flujo separado de solicitud de acceso de empleado, aprobación del propietario y panel visual del cobrador.
+- Ejecutar las migraciones y toda la suite de pruebas contra PostgreSQL/PostGIS; este cambio no se debe fusionar sin CI verde.
+- Añadir más pruebas de regresión de RLS y de reversas de pagos.
+- Revisar el saldo de caja con datos reales de operación y confirmar cómo se entrega y devuelve el dinero inicial al final de cada jornada.
+- La interfaz del portal ya tiene formularios de caja/gastos, resumen por cliente y tabla de amortización; debe validarse visualmente en escritorio y móvil y probarse de punta a punta.
