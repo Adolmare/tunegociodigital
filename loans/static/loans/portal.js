@@ -382,6 +382,98 @@
     });
   }
 
+
+  async function loadCashSummary() {
+    const form = document.getElementById("cash-summary-filters");
+    const params = new URLSearchParams({
+      period: form.elements.period.value,
+      date: form.elements.date.value || localDateValue(),
+    });
+    const button = document.getElementById("cash-summary-search");
+    setBusy(button, true, "Consultando…");
+    try {
+      const report = await api(`/collector-cash-summary/?${params.toString()}`);
+      state.cashSummary = report;
+      const totals = report.totals || {};
+      document.getElementById("cash-opening-total").textContent = money(totals.opening_cash);
+      document.getElementById("cash-collected-total").textContent = money(totals.collected);
+      document.getElementById("cash-expenses-total").textContent = money(totals.expenses);
+      document.getElementById("cash-principal-total").textContent = money(totals.principal_lent);
+      document.getElementById("cash-paperwork-total").textContent = money(totals.paperwork);
+      document.getElementById("cash-expected-total").textContent = money(totals.expected_cash);
+      document.getElementById("cash-summary-rows").innerHTML = (report.rows || []).map((row) =>
+        `<tr><td>${escapeHtml(row.collector_name)}</td><td>${money(row.opening_cash)}</td>` +
+        `<td>${money(row.collected)}</td><td>${money(row.expenses)}</td>` +
+        `<td>${money(row.principal_lent)}</td><td>${money(row.paperwork)}</td>` +
+        `<td><strong>${money(row.expected_cash)}</strong></td></tr>`
+      ).join("");
+      await loadExpenses(report.start_date, report.end_date);
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  async function loadExpenses(start, end) {
+    const params = new URLSearchParams();
+    if (start) params.set("start", start);
+    if (end) params.set("end", end);
+    const expenses = getRows(await api(`/collector-expenses/?${params.toString()}`));
+    const labelsByCategory = {
+      transport: "Transporte", food: "Alimentación", supplies: "Papelería e insumos", other: "Otro",
+    };
+    document.getElementById("expense-rows").innerHTML = expenses.map((expense) =>
+      `<tr><td>${escapeHtml(displayDate(expense.spent_on))}</td>` +
+      `<td>${escapeHtml(expense.collector_name || "")}</td>` +
+      `<td>${escapeHtml(labelsByCategory[expense.category] || expense.category)}</td>` +
+      `<td>${escapeHtml(expense.description)}</td><td>${money(expense.amount)}</td></tr>`
+    ).join("");
+    document.getElementById("expenses-empty").hidden = expenses.length > 0;
+  }
+
+  async function loadCustomerSummary() {
+    const form = document.getElementById("customer-summary-filters");
+    const params = new URLSearchParams();
+    if (form.elements.search.value.trim()) params.set("search", form.elements.search.value.trim());
+    if (form.elements.start.value) params.set("start", form.elements.start.value);
+    if (form.elements.end.value) params.set("end", form.elements.end.value);
+    const button = document.getElementById("customer-summary-button");
+    setBusy(button, true, "Buscando…");
+    try {
+      const report = await api(`/customer-loan-summary/?${params.toString()}`);
+      state.customerSummary = report;
+      const rows = report.rows || [];
+      document.getElementById("customer-summary-empty").hidden = rows.length > 0;
+      document.getElementById("customer-summary-rows").innerHTML = rows.map((customer) => {
+        const loans = (customer.loans || []).map((loan) => {
+          const installments = (loan.installments || []).map((installment) =>
+            `<tr><td>${escapeHtml(installment.number)}</td><td>${escapeHtml(displayDate(installment.due_date))}</td>` +
+            `<td>${money(installment.amount_due)}</td><td>${money(installment.amount_paid)}</td>` +
+            `<td>${money(installment.pending_amount)}</td><td>${escapeHtml(labels[installment.status] || installment.status)}</td></tr>`
+          ).join("");
+          return `<section class="amortization-loan"><h4>Préstamo ${escapeHtml(loan.date)} · ${escapeHtml(labels[loan.frequency] || loan.frequency)}</h4>` +
+            `<p>Capital ${money(loan.principal)} · Interés ${money(loan.interest)} · Papelería ${money(loan.paperwork)} · Saldo ${money(loan.balance)}</p>` +
+            `<div class="ledger-table-wrap"><table class="ledger-table"><thead><tr><th>CUOTA</th><th>VENCIMIENTO</th><th>VALOR</th><th>PAGADO</th><th>PENDIENTE</th><th>ESTADO</th></tr></thead><tbody>${installments}</tbody></table></div></section>`;
+        }).join("");
+        return `<tr><td><strong>${escapeHtml(customer.customer_name)}</strong></td><td>${escapeHtml(customer.loan_count)}</td>` +
+          `<td>${money(customer.principal)}</td><td>${money(customer.paperwork)}</td><td>${money(customer.interest)}</td>` +
+          `<td>${money(customer.total_payable)}</td><td>${money(customer.collected)}</td><td><strong>${money(customer.balance)}</strong></td>` +
+          `<td><details class="amortization-details"><summary>Ver amortización</summary>${loans || "<p>Sin detalle de préstamos.</p>"}</details></td></tr>`;
+      }).join("");
+      const totals = report.totals || {};
+      document.getElementById("customer-summary-totals").innerHTML = rows.length
+        ? `<tr><th>TOTALES</th><td>${escapeHtml(totals.loan_count || 0)}</td><td>${money(totals.principal)}</td>` +
+          `<td>${money(totals.paperwork)}</td><td>${money(totals.interest)}</td><td>${money(totals.total_payable)}</td>` +
+          `<td>${money(totals.collected)}</td><td>${money(totals.balance)}</td><td></td></tr>`
+        : "";
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
   function showView(view) {
     if (view === "ledger" && state.role !== "owner") view = "home";
     state.view = view;
