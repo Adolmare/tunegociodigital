@@ -500,9 +500,15 @@
             `<td>${money(installment.amount_due)}</td><td>${money(installment.amount_paid)}</td>` +
             `<td>${money(installment.pending_amount)}</td><td>${escapeHtml(labels[installment.status] || installment.status)}</td></tr>`
           ).join("");
+          const paymentHistory = (loan.payments || []).map((payment) =>
+            `<tr><td>${escapeHtml(displayDate(payment.date))}</td><td>${money(payment.amount)}</td>` +
+            `<td>${escapeHtml(payment.direction === "reversal" ? "Reversa" : "Abono")}</td>` +
+            `<td>${escapeHtml(payment.collector_name || "")}</td><td>${escapeHtml(payment.method || "")}</td></tr>`
+          ).join("");
           return `<section class="amortization-loan"><h4>Préstamo ${escapeHtml(loan.date)} · ${escapeHtml(labels[loan.frequency] || loan.frequency)}</h4>` +
             `<p>Capital ${money(loan.principal)} · Interés ${money(loan.interest)} · Papelería ${money(loan.paperwork)} · Saldo ${money(loan.balance)}</p>` +
-            `<div class="ledger-table-wrap"><table class="ledger-table"><thead><tr><th>CUOTA</th><th>VENCIMIENTO</th><th>VALOR</th><th>PAGADO</th><th>PENDIENTE</th><th>ESTADO</th></tr></thead><tbody>${installments}</tbody></table></div></section>`;
+            `<div class="ledger-table-wrap"><table class="ledger-table"><thead><tr><th>CUOTA</th><th>VENCIMIENTO</th><th>VALOR</th><th>PAGADO</th><th>PENDIENTE</th><th>ESTADO</th></tr></thead><tbody>${installments}</tbody></table></div>` +
+            `<h5>Historial de pagos</h5><div class="ledger-table-wrap"><table class="ledger-table"><thead><tr><th>FECHA</th><th>VALOR NETO</th><th>MOVIMIENTO</th><th>COBRADOR</th><th>MÉTODO</th></tr></thead><tbody>${paymentHistory}</tbody></table></div></section>`;
         }).join("");
         return `<tr><td><strong>${escapeHtml(customer.customer_name)}</strong></td><td>${escapeHtml(customer.loan_count)}</td>` +
           `<td>${money(customer.principal)}</td><td>${money(customer.paperwork)}</td><td>${money(customer.interest)}</td>` +
