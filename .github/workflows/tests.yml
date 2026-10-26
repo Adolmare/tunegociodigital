@@ -38,6 +38,11 @@ jobs:
           sudo apt-get install -y gdal-bin libgdal-dev libgeos-dev
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
+      - name: Check migration state
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.test
+          MIGRATOR_DATABASE_URL: postgresql://tn_owner:owner_pass@localhost:5432/tunegocio
+        run: python manage.py makemigrations --check --dry-run
       - name: Create restricted application role
         env:
           MIGRATOR_DATABASE_URL: postgresql://tn_owner:owner_pass@localhost:5432/tunegocio
