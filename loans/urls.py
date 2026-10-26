@@ -25,7 +25,8 @@ router.register(r"route-stops", RouteStopViewSet, basename="route-stop")
 router.register(r"collector-daily-cash", CollectorDailyCashViewSet, basename="collector-daily-cash")
 router.register(r"collector-expenses", CollectorExpenseViewSet, basename="collector-expense")
 
-urlpatterns = [\n    path("customer-loan-summary/", CustomerLoanSummaryView.as_view(), name="customer-loan-summary"),
+urlpatterns = [
+    path("customer-loan-summary/", CustomerLoanSummaryView.as_view(), name="customer-loan-summary"),
     path("collector-cash-summary/", CollectorCashSummaryView.as_view(), name="collector-cash-summary"),
     path(
         "loan-payment-events/stream/",
