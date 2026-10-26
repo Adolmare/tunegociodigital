@@ -42,6 +42,7 @@ jobs:
         env:
           DJANGO_SETTINGS_MODULE: config.settings.test
           SECRET_KEY: ci-only-not-a-production-secret
+          DATABASE_URL: postgresql://tn_owner:owner_pass@localhost:5432/tunegocio
           MIGRATOR_DATABASE_URL: postgresql://tn_owner:owner_pass@localhost:5432/tunegocio
         run: python manage.py makemigrations --check --dry-run
       - name: Create restricted application role
