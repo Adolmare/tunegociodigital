@@ -65,6 +65,7 @@
     document.getElementById("auth-error").hidden = true;
     document.getElementById("tenant-error").hidden = true;
     document.getElementById("auth-status").hidden = true;
+    document.getElementById("tenant-status").hidden = true;
   }
 
   function errorMessage(data, fallback) {
@@ -490,7 +491,173 @@
     document.querySelectorAll(".view-panel").forEach((panel) => {
       panel.hidden = panel.id !== `${view}-view`;
     });
-    document.querySelectorAll("[data-view]").forEach((button) => {
+  
+  const loginForm = document.getElementById("login-form");
+  const registerForm = document.getElementById("register-form");
+  const registerToggle = document.getElementById("show-register");
+
+  function toggleRegistration(show) {
+    loginForm.hidden = show;
+    loginForm.querySelectorAll("input, button").forEach((field) => { field.disabled = show; });
+    registerForm.hidden = !show;
+    registerForm.querySelectorAll("input, button").forEach((field) => { field.disabled = !show; });
+    registerToggle.hidden = show;
+    document.getElementById("login-title").innerHTML = show
+      ? "Crea tu cuenta<br>de cobrador."
+      : "Tus préstamos,<br>más cerca.";
+  }
+
+  registerToggle.addEventListener("click", () => toggleRegistration(true));
+  document.getElementById("cancel-register").addEventListener("click", () => toggleRegistration(false));
+
+  registerForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    clearMessages();
+    const button = registerForm.querySelector('button[type="submit"]');
+    const form = new FormData(registerForm);
+    const username = String(form.get("username") || "").trim();
+    const password = String(form.get("password") || "");
+    const joinCode = String(form.get("join_code") || "").trim().toUpperCase();
+    setBusy(button, true, "Creando cuenta…");
+    try {
+      const registration = await rawRequest("/auth/register/", {
+        method: "POST",
+        body: JSON.stringify({
+          username,
+          email: String(form.get("email") || "").trim(),
+          full_name: String(form.get("full_name") || "").trim(),
+          password,
+        }),
+      }, false);
+      const registrationData = await registration.json().catch(() => null);
+      if (!registration.ok) throw new Error(errorMessage(registrationData, "No se pudo crear la cuenta."));
+      const loginResponse = await rawRequest("/auth/login/", {
+        method: "POST",
+        body: JSON.stringify({ username, password }),
+      }, false);
+      const loginData = await loginResponse.json().catch(() => null);
+      if (!loginResponse.ok) throw new Error(errorMessage(loginData, "La cuenta se creó, pero no fue posible iniciar sesión."));
+      state.access = loginData.access;
+      state.refresh = loginData.refresh;
+      state.username = username;
+      state.tenant = null;
+      sessionStorage.setItem("loan_access", state.access);
+      sessionStorage.setItem("loan_refresh", state.refresh);
+      sessionStorage.setItem("loan_username", username);
+      const joinResponse = await rawRequest("/tenant-join-requests/", {
+        method: "POST",
+        body: JSON.stringify({ join_code: joinCode }),
+      });
+      const joinData = await joinResponse.json().catch(() => null);
+      setScreen("tenants");
+      if (!joinResponse.ok) {
+        document.getElementById("tenant-options").innerHTML =
+          '<p class="muted">Tu cuenta está creada. Corrige el código o solicita acceso a otro negocio.</p>';
+        showError(errorMessage(joinData, "No se pudo enviar la solicitud de acceso."));
+        toggleRegistration(false);
+        registerForm.reset();
+        return;
+      }
+      registerForm.reset();
+      loginForm.reset();
+      document.getElementById("tenant-options").innerHTML =
+        '<p class="muted">Solicitud enviada. Podrás entrar al negocio cuando el propietario la acepte.</p>';
+      document.getElementById("tenant-join-code").value = "";
+      document.getElementById("tenant-status").textContent = "Cuenta creada y solicitud enviada al propietario.";
+      document.getElementById("tenant-status").hidden = false;
+      toggleRegistration(false);
+    } catch (error) {
+      setScreen("auth");
+      showError(error.message);
+    } finally {
+      setBusy(button, false);
+    }
+  });
+
+  document.getElementById("tenant-join-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    clearMessages();
+    const form = new FormData(event.currentTarget);
+    const button = event.currentTarget.querySelector('button[type="submit"]');
+    setBusy(button, true, "Enviando…");
+    try {
+      const response = await rawRequest("/tenant-join-requests/", {
+        method: "POST",
+        body: JSON.stringify({ join_code: String(form.get("join_code") || "").trim().toUpperCase() }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(errorMessage(data, "No se pudo enviar la solicitud."));
+      event.currentTarget.reset();
+      document.getElementById("tenant-status").textContent =
+        `Solicitud enviada a ${data.tenant_name}. Espera la aprobación del propietario.`;
+      document.getElementById("tenant-status").hidden = false;
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setBusy(button, false);
+    }
+  });
+
+  document.getElementById("cash-summary-filters").addEventListener("submit", (event) => {
+    event.preventDefault();
+    loadCashSummary();
+  });
+  document.getElementById("customer-summary-filters").addEventListener("submit", (event) => {
+    event.preventDefault();
+    loadCustomerSummary();
+  });
+
+  document.getElementById("cash-opening-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const button = event.currentTarget.querySelector('button[type="submit"]');
+    const data = {
+      date: form.get("date"),
+      opening_amount: form.get("opening_amount"),
+      notes: form.get("notes") || "",
+    };
+    if ((rank[state.role] || 0) >= rank.manager) data.collector = form.get("collector");
+    setBusy(button, true, "Guardando…");
+    try {
+      await api("/collector-daily-cash/", { method: "POST", body: JSON.stringify(data) });
+      event.currentTarget.reset();
+      document.getElementById("cash-opening-date").value = localDateValue();
+      await loadCashSummary();
+      showToast("Dinero inicial registrado.");
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setBusy(button, false);
+    }
+  });
+
+  document.getElementById("expense-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const button = event.currentTarget.querySelector('button[type="submit"]');
+    const data = {
+      spent_on: form.get("spent_on"),
+      category: form.get("category"),
+      description: String(form.get("description") || "").trim(),
+      amount: form.get("amount"),
+      notes: form.get("notes") || "",
+    };
+    if ((rank[state.role] || 0) >= rank.manager) data.collector = form.get("collector");
+    setBusy(button, true, "Guardando…");
+    try {
+      await api("/collector-expenses/", { method: "POST", body: JSON.stringify(data) });
+      event.currentTarget.reset();
+      document.getElementById("expense-date").value = localDateValue();
+      await loadCashSummary();
+      showToast("Gasto registrado.");
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setBusy(button, false);
+    }
+  });
+
+  document.querySelectorAll("[data-view]").forEach((button) => {
       button.classList.toggle("is-active", button.dataset.view === view);
     });
     if (view === "new-loan" && (rank[state.role] || 0) >= rank.manager && !state.employees.length) {
