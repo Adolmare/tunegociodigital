@@ -59,6 +59,12 @@
         <p class="muted">Selecciona la empresa cuya cartera quieres consultar.</p>
         <div class="notice notice-error" id="tenant-error" role="alert" hidden></div>
         <div id="tenant-options" class="tenant-options"></div>
+        <div class="notice" id="tenant-status" role="status" aria-live="polite" hidden></div>
+        <form id="tenant-join-form" class="stack">
+          <label for="tenant-join-code">¿Tienes un código de negocio?</label>
+          <input id="tenant-join-code" name="join_code" type="text" maxlength="10" autocomplete="off" placeholder="Código de negocio" required>
+          <button class="button button-primary button-wide" type="submit">Solicitar acceso como cobrador</button>
+        </form>
         <button class="text-button" id="tenant-logout" type="button">Cerrar sesión</button>
       </div>
     </section>
