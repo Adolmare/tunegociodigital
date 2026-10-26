@@ -20,7 +20,7 @@ ZERO = Decimal("0.00")
 
 class CollectorDailyCashSerializer(serializers.ModelSerializer):
     collector_name = serializers.CharField(source="collector.full_name", read_only=True)
-    collector = serializers.PrimaryKeyRelatedField(queryset=Employee.unscoped.none())
+    collector = serializers.PrimaryKeyRelatedField(queryset=Employee.unscoped.none(), required=False)
 
     class Meta:
         model = CollectorDailyCash
@@ -36,10 +36,12 @@ class CollectorDailyCashSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         request = self.context.get("request")
         collector = attrs.get("collector", getattr(self.instance, "collector", None))
-        if request is not None and collector is not None:
-            if collector.tenant_id != request.tenant.pk:
+        if request is not None:
+            if collector is None and request.membership.role != "employee":
+                raise serializers.ValidationError({"collector": "Selecciona el cobrador."})
+            if collector is not None and collector.tenant_id != request.tenant.pk:
                 raise serializers.ValidationError({"collector": "El cobrador no pertenece al negocio activo."})
-            if request.membership.role == "employee" and collector.user_id != request.user.pk:
+            if request.membership.role == "employee" and collector is not None and collector.user_id != request.user.pk:
                 raise serializers.ValidationError({"collector": "Solo puedes registrar tu propia caja."})
         return attrs
 
@@ -62,10 +64,12 @@ class CollectorExpenseSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         request = self.context.get("request")
         collector = attrs.get("collector", getattr(self.instance, "collector", None))
-        if request is not None and collector is not None:
-            if collector.tenant_id != request.tenant.pk:
+        if request is not None:
+            if collector is None and request.membership.role != "employee":
+                raise serializers.ValidationError({"collector": "Selecciona el cobrador."})
+            if collector is not None and collector.tenant_id != request.tenant.pk:
                 raise serializers.ValidationError({"collector": "El cobrador no pertenece al negocio activo."})
-            if request.membership.role == "employee" and collector.user_id != request.user.pk:
+            if request.membership.role == "employee" and collector is not None and collector.user_id != request.user.pk:
                 raise serializers.ValidationError({"collector": "Solo puedes registrar tus propios gastos."})
         return attrs
 
