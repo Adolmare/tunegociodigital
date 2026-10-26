@@ -7,10 +7,10 @@ from rest_framework import serializers, status
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
 
 from employees.models import Employee
-from tenants.api import HasRole, HasTool, TenantContextMixin, TenantViewSet
-from rest_framework.permissions import IsAuthenticated
+from tenants.api import ActionMinRoleMixin, HasRole, HasTool, TenantContextMixin, TenantViewSet
 
 from .models import CollectorDailyCash, CollectorExpense, Loan, LoanPayment
 
@@ -48,7 +48,7 @@ class CollectorDailyCashSerializer(serializers.ModelSerializer):
 
 class CollectorExpenseSerializer(serializers.ModelSerializer):
     collector_name = serializers.CharField(source="collector.full_name", read_only=True)
-    collector = serializers.PrimaryKeyRelatedField(queryset=Employee.objects.none())
+    collector = serializers.PrimaryKeyRelatedField(queryset=Employee.unscoped.none(), required=False)
 
     class Meta:
         model = CollectorExpense
@@ -74,9 +74,17 @@ class CollectorExpenseSerializer(serializers.ModelSerializer):
         return attrs
 
 
-class CollectorDailyCashViewSet(TenantViewSet):
+class CollectorDailyCashViewSet(ActionMinRoleMixin, TenantViewSet):
     required_tool = "loans"
     min_role = "employee"
+    role_by_action = {
+        "list": "employee",
+        "retrieve": "employee",
+        "create": "employee",
+        "update": "manager",
+        "partial_update": "manager",
+    }
+    http_method_names = ["get", "post", "put", "patch", "head", "options"]
     serializer_class = CollectorDailyCashSerializer
 
     def get_queryset(self):
@@ -103,9 +111,17 @@ class CollectorDailyCashViewSet(TenantViewSet):
             serializer.save(tenant=self.request.tenant)
 
 
-class CollectorExpenseViewSet(TenantViewSet):
+class CollectorExpenseViewSet(ActionMinRoleMixin, TenantViewSet):
     required_tool = "loans"
     min_role = "employee"
+    role_by_action = {
+        "list": "employee",
+        "retrieve": "employee",
+        "create": "employee",
+        "update": "manager",
+        "partial_update": "manager",
+    }
+    http_method_names = ["get", "post", "put", "patch", "head", "options"]
     serializer_class = CollectorExpenseSerializer
 
     def get_queryset(self):
