@@ -10,6 +10,7 @@ class TenantSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "slug",
+            "join_code",
             "business_type",
             "status",
             "timezone",
