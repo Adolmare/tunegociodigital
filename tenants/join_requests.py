@@ -115,7 +115,7 @@ class TenantJoinRequestManageAPIView(TenantContextMixin, APIView):
                     membership.is_active = True
                     membership.save(update_fields=["is_active"])
 
-                Employee.unscoped.get_or_create(
+                employee, created = Employee.unscoped.get_or_create(
                     tenant=request.tenant,
                     user=join_request.user,
                     defaults={
@@ -124,6 +124,10 @@ class TenantJoinRequestManageAPIView(TenantContextMixin, APIView):
                         "is_active": True,
                     },
                 )
+                if not created and (not employee.is_active or employee.deleted_at is not None):
+                    employee.is_active = True
+                    employee.deleted_at = None
+                    employee.save(update_fields=["is_active", "deleted_at", "updated_at"])
                 join_request.status = TenantJoinRequest.Status.ACCEPTED
             else:
                 join_request.status = TenantJoinRequest.Status.REJECTED
