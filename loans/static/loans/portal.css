@@ -353,3 +353,25 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
   .employee-request-actions { grid-column: 1 / -1; }
   .employee-request-actions .button { flex: 1; }
 }
+
+.business-code {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: -8px 0 18px;
+  padding: 14px 17px;
+  border: 1px solid #dfe9e1;
+  border-radius: 14px;
+  background: linear-gradient(110deg, #f2f8f3, #ffffff);
+}
+.business-code > div { display: grid; gap: 4px; }
+.business-code strong { font-size: 21px; letter-spacing: .12em; color: var(--green, #174d39); }
+.business-code .muted { font-size: 11px; }
+.business-code .eyebrow { margin: 0; }
+@media (max-width: 680px) {
+  .business-code { align-items: flex-start; padding: 12px; gap: 8px; }
+  .business-code strong { font-size: 18px; }
+  .business-code .muted { max-width: 220px; line-height: 1.4; }
+  .business-code .button { flex: 0 0 auto; min-height: 34px; padding: 0 9px; font-size: 10px; }
+}
