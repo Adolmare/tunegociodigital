@@ -34,6 +34,7 @@ class MyMembershipSerializer(serializers.ModelSerializer):
     tenant_id = serializers.UUIDField(source="tenant.id", read_only=True)
     tenant_name = serializers.CharField(source="tenant.name", read_only=True)
     tenant_slug = serializers.CharField(source="tenant.slug", read_only=True)
+    tenant_join_code = serializers.CharField(source="tenant.join_code", read_only=True)
     tenant_currency = serializers.CharField(source="tenant.currency", read_only=True)
 
     class Meta:
@@ -42,6 +43,7 @@ class MyMembershipSerializer(serializers.ModelSerializer):
             "tenant_id",
             "tenant_name",
             "tenant_slug",
+            "tenant_join_code",
             "tenant_currency",
             "role",
         )
