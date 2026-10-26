@@ -20,7 +20,7 @@ ZERO = Decimal("0.00")
 
 class CollectorDailyCashSerializer(serializers.ModelSerializer):
     collector_name = serializers.CharField(source="collector.full_name", read_only=True)
-    collector = serializers.PrimaryKeyRelatedField(queryset=Employee.objects.none())
+    collector = serializers.PrimaryKeyRelatedField(queryset=Employee.unscoped.none())
 
     class Meta:
         model = CollectorDailyCash
