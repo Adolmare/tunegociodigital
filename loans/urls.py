@@ -1,7 +1,12 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from .cashflow import (\n    CollectorCashSummaryView,\n    CollectorDailyCashViewSet,\n    CollectorExpenseViewSet,\n    CustomerLoanSummaryView,\n)
+from .cashflow import (
+    CollectorCashSummaryView,
+    CollectorDailyCashViewSet,
+    CollectorExpenseViewSet,
+    CustomerLoanSummaryView,
+)
 from .views import (
     CollectionRouteViewSet,
     LoanPaymentEventStreamView,
