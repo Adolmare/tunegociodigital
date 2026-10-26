@@ -82,6 +82,7 @@
           <button class="nav-button" id="ledger-nav" type="button" data-view="ledger" hidden><span aria-hidden="true">▤</span> Libro de cartera</button>
           <button class="nav-button" type="button" data-view="cashflow"><span aria-hidden="true">$</span> Caja y gastos</button>
           <button class="nav-button" type="button" data-view="customer-summary"><span aria-hidden="true">♙</span> Resumen por cliente</button>
+          <button class="nav-button" id="employee-requests-nav" type="button" data-view="employee-requests" hidden><span aria-hidden="true">✓</span> Solicitudes de empleados</button>
           <button class="nav-button" type="button" data-view="new-loan"><span aria-hidden="true">＋</span> Nuevo préstamo</button>
         </nav>
         <div class="sidebar-bottom">
@@ -311,6 +312,14 @@
               </form>
               <div class="ledger-table-wrap"><table class="ledger-table"><thead><tr><th>CLIENTE</th><th>PRÉSTAMOS</th><th>CAPITAL</th><th>PAPELERÍA</th><th>INTERESES</th><th>TOTAL A PAGAR</th><th>RECOGIDO</th><th>SALDO</th><th>DETALLE</th></tr></thead><tbody id="customer-summary-rows"></tbody><tfoot id="customer-summary-totals"></tfoot></table></div>
               <div class="empty-state" id="customer-summary-empty" hidden><h3>No se encontraron clientes</h3><p>Prueba otro nombre o rango de fechas.</p></div>
+            </section>
+          </section>
+
+          <section class="view-panel" id="employee-requests-view" hidden aria-label="Solicitudes de empleados">
+            <section class="section-card">
+              <div class="section-heading"><div><h2>Solicitudes para unirse al negocio</h2><p class="muted">Aprueba el acceso de nuevos cobradores. No tendrán acceso antes de tu aceptación.</p></div><button class="button button-quiet" id="refresh-employee-requests" type="button">Actualizar</button></div>
+              <div class="loan-list" id="employee-request-list"></div>
+              <div class="empty-state" id="employee-requests-empty" hidden><h3>No hay solicitudes pendientes</h3><p>Cuando un cobrador use tu código de negocio, aparecerá aquí.</p></div>
             </section>
           </section>
 
