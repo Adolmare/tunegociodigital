@@ -44,6 +44,10 @@ class CollectorDailyCashSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"collector": "El cobrador no pertenece al negocio activo."})
             if request.membership.role == "employee" and collector is not None and collector.user_id != request.user.pk:
                 raise serializers.ValidationError({"collector": "Solo puedes registrar tu propia caja."})
+            selected_date = attrs.get("date", getattr(self.instance, "date", None))
+            if self.instance is None and collector is not None and selected_date is not None:
+                if CollectorDailyCash.objects.filter(collector=collector, date=selected_date).exists():
+                    raise serializers.ValidationError({"date": "Ya existe un dinero inicial registrado para este cobrador en esa fecha."})
         return attrs
 
 
