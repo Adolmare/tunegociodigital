@@ -246,6 +246,8 @@
     document.getElementById("mobile-ledger-nav").hidden = !isOwner;
     document.getElementById("mobile-cashflow-nav").hidden = false;
     document.getElementById("mobile-customer-nav").hidden = false;
+    document.getElementById("employee-requests-nav").hidden = !isOwner;
+    document.getElementById("mobile-employee-requests-nav").hidden = !isOwner;
     document.getElementById("today-label").textContent = new Intl.DateTimeFormat("es", {
       weekday: "long",
       day: "numeric",
@@ -385,6 +387,48 @@
   }
 
 
+
+  async function loadEmployeeRequests() {
+    const container = document.getElementById("employee-request-list");
+    try {
+      const requests = getRows(await api("/tenant-join-requests/manage/"));
+      document.getElementById("employee-requests-empty").hidden = requests.length > 0;
+      container.replaceChildren();
+      requests.forEach((item) => {
+        const row = document.createElement("article");
+        row.className = "loan-row employee-request-row";
+        const name = item.full_name || item.username || "Usuario";
+        row.innerHTML =
+          `<div class="loan-person"><span class="customer-avatar">${escapeHtml(initials(name))}</span>` +
+          `<div><strong>${escapeHtml(name)}</strong><span>${escapeHtml(item.email)}</span>` +
+          `<span>Solicitud ${escapeHtml(displayDate(String(item.created_at || "").slice(0, 10)))}</span></div></div>` +
+          `<div class="loan-detail"><strong>Acceso como cobrador</strong><span>Solo se habilita al aprobar</span></div>` +
+          `<div class="employee-request-actions"><button class="button button-primary" type="button" data-request-accept="${escapeHtml(item.id)}">Aceptar</button>` +
+          `<button class="button button-quiet" type="button" data-request-reject="${escapeHtml(item.id)}">Rechazar</button></div>`;
+        container.append(row);
+      });
+    } catch (error) {
+      showError(error.message);
+    }
+  }
+
+  async function decideEmployeeRequest(requestId, decision, button) {
+    setBusy(button, true, decision === "accept" ? "Aceptando…" : "Rechazando…");
+    try {
+      await api("/tenant-join-requests/manage/", {
+        method: "POST",
+        body: JSON.stringify({ request_id: requestId, decision }),
+      });
+      await loadEmployeeRequests();
+      await loadEmployees();
+      showToast(decision === "accept" ? "Cobrador aceptado en el negocio." : "Solicitud rechazada.");
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
   async function loadCashSummary() {
     const form = document.getElementById("cash-summary-filters");
     const params = new URLSearchParams({
@@ -477,7 +521,7 @@
   }
 
   function showView(view) {
-    if (view === "ledger" && state.role !== "owner") view = "home";
+    if ((view === "ledger" || view === "employee-requests") && state.role !== "owner") view = "home";
     state.view = view;
     const titles = {
       home: ["Resumen", "Una mirada clara a tus préstamos."],
@@ -485,6 +529,7 @@
       ledger: ["Libro de cartera", "Consulta el formato del Excel por período y frecuencia."],
       cashflow: ["Caja y gastos", "Controla el dinero inicial, los cobros, los préstamos y los gastos."],
       "customer-summary": ["Resumen por cliente", "Consulta la cartera consolidada y el detalle de amortización."],
+      "employee-requests": ["Solicitudes de empleados", "Aprueba o rechaza las solicitudes de acceso al negocio."],
       "new-loan": ["Nuevo préstamo", "Registra un cliente y define su frecuencia de cobro."],
     };
     document.getElementById("view-title").textContent = titles[view][0];
@@ -667,6 +712,7 @@
     if (view === "ledger") loadLedger();
     if (view === "cashflow") loadCashSummary();
     if (view === "customer-summary") loadCustomerSummary();
+    if (view === "employee-requests") loadEmployeeRequests();
     clearMessages();
   }
 
@@ -841,6 +887,13 @@
     button.addEventListener("click", () => showView(button.dataset.view));
   });
   document.getElementById("refresh-button").addEventListener("click", loadDashboard);
+  document.getElementById("refresh-employee-requests").addEventListener("click", loadEmployeeRequests);
+  document.addEventListener("click", (event) => {
+    const accept = event.target.closest("[data-request-accept]");
+    const reject = event.target.closest("[data-request-reject]");
+    if (accept) decideEmployeeRequest(accept.dataset.requestAccept, "accept", accept);
+    if (reject) decideEmployeeRequest(reject.dataset.requestReject, "reject", reject);
+  });
   document.getElementById("logout-button").addEventListener("click", () => logout());
   document.getElementById("topbar-avatar").addEventListener("click", () => logout());
   document.getElementById("mobile-logout").addEventListener("click", () => logout());
