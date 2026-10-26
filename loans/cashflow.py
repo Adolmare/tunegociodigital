@@ -229,3 +229,111 @@ class CollectorCashSummaryView(TenantContextMixin, APIView):
             "rows": rows,
             "totals": {key: str(value) for key, value in totals.items()},
         }, status=status.HTTP_200_OK)
+
+
+class CustomerLoanSummaryView(TenantContextMixin, APIView):
+    """Una fila por cliente; pagos se agregan aparte para evitar duplicación por joins."""
+
+    permission_classes = [IsAuthenticated, HasTool, HasRole]
+    required_tool = "loans"
+    min_role = "employee"
+
+    def get(self, request):
+        loans = Loan.objects.select_related("customer").order_by("customer__full_name", "created_at")
+        if request.membership.role == "employee":
+            loans = loans.filter(collector__user=request.user)
+
+        search = request.query_params.get("search", "").strip()
+        if search:
+            loans = loans.filter(customer__full_name__icontains=search)
+
+        start = request.query_params.get("start")
+        end = request.query_params.get("end")
+        if start:
+            try:
+                date.fromisoformat(start)
+            except ValueError:
+                raise ValidationError({"start": "Usa el formato YYYY-MM-DD."})
+            loans = loans.filter(start_date__gte=start)
+        if end:
+            try:
+                date.fromisoformat(end)
+            except ValueError:
+                raise ValidationError({"end": "Usa el formato YYYY-MM-DD."})
+            loans = loans.filter(start_date__lte=end)
+
+        loan_rows = list(loans)
+        loan_ids = [loan.pk for loan in loan_rows]
+        payments = {
+            row["loan_id"]: row["total"] or ZERO
+            for row in LoanPayment.objects.filter(loan_id__in=loan_ids).annotate(
+                signed_amount=Case(
+                    When(direction="reversal", then=-F("amount")),
+                    default=F("amount"),
+                    output_field=DecimalField(max_digits=14, decimal_places=2),
+                )
+            ).values("loan_id").annotate(total=Sum("signed_amount"))
+        }
+
+        grouped = {}
+        for loan in loan_rows:
+            key = loan.customer_id
+            if key not in grouped:
+                grouped[key] = {
+                    "customer_id": str(loan.customer_id),
+                    "customer_name": loan.customer.full_name,
+                    "loan_count": 0,
+                    "principal": ZERO,
+                    "paperwork": ZERO,
+                    "interest": ZERO,
+                    "total_payable": ZERO,
+                    "collected": ZERO,
+                    "balance": ZERO,
+                    "loans": [],
+                }
+            row = grouped[key]
+            interest = loan.total_payable - loan.principal
+            collected = loan.opening_paid + payments.get(loan.pk, ZERO)
+            row["loan_count"] += 1
+            row["principal"] += loan.principal
+            row["paperwork"] += loan.paperwork_fee
+            row["interest"] += interest
+            row["total_payable"] += loan.total_payable
+            row["collected"] += collected
+            row["balance"] += loan.balance
+            row["loans"].append({
+                "id": str(loan.pk),
+                "date": loan.start_date.isoformat(),
+                "principal": str(loan.principal),
+                "paperwork": str(loan.paperwork_fee),
+                "interest": str(interest),
+                "total_payable": str(loan.total_payable),
+                "collected": str(collected),
+                "balance": str(loan.balance),
+                "frequency": loan.frequency,
+                "status": loan.status,
+            })
+
+        rows = []
+        for row in sorted(grouped.values(), key=lambda item: item["customer_name"].casefold()):
+            rows.append({
+                **row,
+                **{
+                    key: str(row[key])
+                    for key in ("principal", "paperwork", "interest", "total_payable", "collected", "balance")
+                },
+            })
+        total_keys = ("loan_count", "principal", "paperwork", "interest", "total_payable", "collected", "balance")
+        totals = {
+            key: sum((Decimal(str(row[key])) for row in rows), ZERO) if key != "loan_count"
+            else sum(row[key] for row in rows)
+            for key in total_keys
+        }
+        return Response({
+            "search": search,
+            "start_date": start or None,
+            "end_date": end or None,
+            "customer_count": len(rows),
+            "rows": rows,
+            "totals": {key: str(value) for key, value in totals.items()},
+        }, status=status.HTTP_200_OK)
