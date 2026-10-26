@@ -133,3 +133,5 @@ def test_customer_loan_summary_groups_multiple_loans_without_duplicate_customer_
     assert row["customer_name"] == "María Pérez"
     assert row["loan_count"] == 2
     assert Decimal(row["principal"]) == Decimal("300.00")
+    assert len(row["loans"]) == 2
+    assert all(len(item["installments"]) == 2 for item in row["loans"])
