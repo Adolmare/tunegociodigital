@@ -11,6 +11,8 @@
     loans: [],
     collections: [],
     ledger: null,
+    cashSummary: null,
+    customerSummary: null,
     employees: [],
     view: "home",
     eventController: null,
@@ -62,6 +64,7 @@
     elements.error.hidden = true;
     document.getElementById("auth-error").hidden = true;
     document.getElementById("tenant-error").hidden = true;
+    document.getElementById("auth-status").hidden = true;
   }
 
   function errorMessage(data, fallback) {
@@ -203,7 +206,7 @@
       if (!memberships.length) {
         setScreen("tenants");
         document.getElementById("tenant-options").innerHTML =
-          '<p class="muted">Tu usuario todavía no tiene una empresa activa.</p>';
+          '<p class="muted">Tu usuario todavía no tiene una empresa activa. Si ya solicitaste acceso con un código, espera la aprobación del propietario.</p>';
         return;
       }
       const options = document.getElementById("tenant-options");
@@ -249,6 +252,9 @@
     const today = new Date();
     document.getElementById("start-date").value = localDateValue(today);
     document.getElementById("ledger-date").value = localDateValue(today);
+    ["cash-date", "cash-opening-date", "expense-date"].forEach((id) => {
+      document.getElementById(id).value = localDateValue(today);
+    });
     clearMessages();
     await loadDashboard();
     if ((rank[state.role] || 0) >= rank.manager) await loadEmployees();
@@ -268,18 +274,28 @@
   function populateCollectors() {
     const loanSelect = document.getElementById("loan-collector");
     const paymentSelect = document.getElementById("payment-collector");
+    const openingSelect = document.getElementById("cash-opening-collector");
+    const expenseSelect = document.getElementById("expense-collector");
     const selectedLoanCollector = loanSelect.value;
     loanSelect.replaceChildren(new Option("Sin asignar", ""));
     paymentSelect.replaceChildren(new Option("Selecciona un cobrador", ""));
+    openingSelect.replaceChildren(new Option("Selecciona un cobrador", ""));
+    expenseSelect.replaceChildren(new Option("Selecciona un cobrador", ""));
     state.employees.forEach((employee) => {
       const label = employee.full_name || employee.email || `Cobrador ${employee.id}`;
       loanSelect.add(new Option(label, employee.id));
       paymentSelect.add(new Option(label, employee.id));
+      openingSelect.add(new Option(label, employee.id));
+      expenseSelect.add(new Option(label, employee.id));
     });
     loanSelect.value = selectedLoanCollector;
     const manager = (rank[state.role] || 0) >= rank.manager;
     document.getElementById("collector-field").hidden = !manager;
     document.getElementById("payment-collector-field").hidden = !manager;
+    document.getElementById("cash-opening-collector-field").hidden = !manager;
+    document.getElementById("expense-collector-field").hidden = !manager;
+    openingSelect.required = manager;
+    expenseSelect.required = manager;
   }
 
   async function loadDashboard() {
@@ -373,6 +389,8 @@
       home: ["Resumen", "Una mirada clara a tus préstamos."],
       collections: ["Cobros de hoy", "Cuotas pendientes de tu cartera."],
       ledger: ["Libro de cartera", "Consulta el formato del Excel por período y frecuencia."],
+      cashflow: ["Caja y gastos", "Controla el dinero inicial, los cobros, los préstamos y los gastos."],
+      "customer-summary": ["Resumen por cliente", "Consulta la cartera consolidada y el detalle de amortización."],
       "new-loan": ["Nuevo préstamo", "Registra un cliente y define su frecuencia de cobro."],
     };
     document.getElementById("view-title").textContent = titles[view][0];
@@ -387,6 +405,8 @@
       loadEmployees();
     }
     if (view === "ledger") loadLedger();
+    if (view === "cashflow") loadCashSummary();
+    if (view === "customer-summary") loadCustomerSummary();
     clearMessages();
   }
 
