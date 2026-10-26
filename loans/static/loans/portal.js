@@ -242,6 +242,8 @@
     document.getElementById("sidebar-avatar").textContent = initials(displayName);
     document.getElementById("topbar-avatar").textContent = initials(displayName);
     const isOwner = state.role === "owner";
+    document.getElementById("business-code-panel").hidden = !isOwner;
+    document.getElementById("business-join-code").textContent = membership.tenant_join_code || "—";
     document.getElementById("ledger-nav").hidden = !isOwner;
     document.getElementById("mobile-ledger-nav").hidden = !isOwner;
     document.getElementById("mobile-cashflow-nav").hidden = false;
@@ -885,6 +887,16 @@
 
   document.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => showView(button.dataset.view));
+  });
+  document.getElementById("copy-join-code").addEventListener("click", async () => {
+    const code = document.getElementById("business-join-code").textContent;
+    if (!code || code === "—") return;
+    try {
+      await navigator.clipboard.writeText(code);
+      showToast("Código del negocio copiado.");
+    } catch (error) {
+      showToast(`Código del negocio: ${code}`);
+    }
   });
   document.getElementById("refresh-button").addEventListener("click", loadDashboard);
   document.getElementById("refresh-employee-requests").addEventListener("click", loadEmployeeRequests);
