@@ -296,6 +296,17 @@ class CustomerLoanSummaryView(TenantContextMixin, APIView):
                 )
             ).values("loan_id").annotate(total=Sum("signed_amount"))
         }
+        payment_details = {}
+        for payment in LoanPayment.objects.filter(loan_id__in=loan_ids).select_related("collector").order_by("paid_at"):
+            payment_details.setdefault(payment.loan_id, []).append({
+                "id": str(payment.pk),
+                "paid_at": payment.paid_at.isoformat(),
+                "date": timezone.localtime(payment.paid_at).date().isoformat(),
+                "amount": str(-payment.amount if payment.direction == "reversal" else payment.amount),
+                "direction": payment.direction,
+                "method": payment.method,
+                "collector_name": payment.collector.full_name,
+            })
 
         grouped = {}
         for loan in loan_rows:
@@ -345,6 +356,7 @@ class CustomerLoanSummaryView(TenantContextMixin, APIView):
                     }
                     for installment in loan.schedule.all()
                 ],
+                "payments": payment_details.get(loan.pk, []),
             })
 
         rows = []
