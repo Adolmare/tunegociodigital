@@ -21,6 +21,7 @@ ZERO = Decimal("0.00")
 class CollectorDailyCashSerializer(serializers.ModelSerializer):
     collector_name = serializers.CharField(source="collector.full_name", read_only=True)
     collector = serializers.PrimaryKeyRelatedField(queryset=Employee.unscoped.none(), required=False)
+    opening_amount = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.00"))
 
     class Meta:
         model = CollectorDailyCash
@@ -49,6 +50,7 @@ class CollectorDailyCashSerializer(serializers.ModelSerializer):
 class CollectorExpenseSerializer(serializers.ModelSerializer):
     collector_name = serializers.CharField(source="collector.full_name", read_only=True)
     collector = serializers.PrimaryKeyRelatedField(queryset=Employee.unscoped.none(), required=False)
+    amount = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.01"))
 
     class Meta:
         model = CollectorExpense
