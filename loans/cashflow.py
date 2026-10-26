@@ -243,7 +243,7 @@ class CustomerLoanSummaryView(TenantContextMixin, APIView):
     min_role = "employee"
 
     def get(self, request):
-        loans = Loan.objects.select_related("customer").order_by("customer__full_name", "created_at")
+        loans = Loan.objects.select_related("customer").prefetch_related("schedule").order_by("customer__full_name", "created_at")
         if request.membership.role == "employee":
             loans = loans.filter(collector__user=request.user)
 
@@ -316,6 +316,17 @@ class CustomerLoanSummaryView(TenantContextMixin, APIView):
                 "balance": str(loan.balance),
                 "frequency": loan.frequency,
                 "status": loan.status,
+                "installments": [
+                    {
+                        "number": installment.number,
+                        "due_date": installment.due_date.isoformat(),
+                        "amount_due": str(installment.amount_due),
+                        "amount_paid": str(installment.amount_paid),
+                        "pending_amount": str(installment.amount_due - installment.amount_paid),
+                        "status": installment.status,
+                    }
+                    for installment in loan.schedule.all()
+                ],
             })
 
         rows = []
