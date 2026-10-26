@@ -28,6 +28,22 @@
           <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="Tu contraseña" required>
           <button class="button button-primary button-wide" type="submit">Ingresar <span aria-hidden="true">→</span></button>
         </form>
+        <button class="text-button" id="show-register" type="button">¿Eres cobrador? Crea una cuenta con código de negocio</button>
+        <div class="notice" id="auth-status" role="status" aria-live="polite" hidden></div>
+        <form id="register-form" class="stack" hidden>
+          <label for="register-full-name">Nombre completo</label>
+          <input id="register-full-name" name="full_name" type="text" maxlength="150" autocomplete="name" required>
+          <label for="register-username">Usuario</label>
+          <input id="register-username" name="username" type="text" maxlength="150" autocomplete="username" required>
+          <label for="register-email">Correo electrónico</label>
+          <input id="register-email" name="email" type="email" autocomplete="email" required>
+          <label for="register-password">Contraseña</label>
+          <input id="register-password" name="password" type="password" autocomplete="new-password" minlength="8" required>
+          <label for="register-join-code">Código del negocio</label>
+          <input id="register-join-code" name="join_code" type="text" maxlength="10" autocomplete="off" required>
+          <button class="button button-primary button-wide" type="submit">Crear cuenta y solicitar acceso <span aria-hidden="true">→</span></button>
+          <button class="text-button" id="cancel-register" type="button">Volver a iniciar sesión</button>
+        </form>
       </div>
       <p class="auth-footnote">Acceso seguro para tu equipo de trabajo.</p>
     </section>
@@ -58,6 +74,8 @@
           <button class="nav-button is-active" type="button" data-view="home"><span aria-hidden="true">▦</span> Resumen</button>
           <button class="nav-button" type="button" data-view="collections"><span aria-hidden="true">↗</span> Cobros de hoy</button>
           <button class="nav-button" id="ledger-nav" type="button" data-view="ledger" hidden><span aria-hidden="true">▤</span> Libro de cartera</button>
+          <button class="nav-button" type="button" data-view="cashflow"><span aria-hidden="true">$</span> Caja y gastos</button>
+          <button class="nav-button" type="button" data-view="customer-summary"><span aria-hidden="true">♙</span> Resumen por cliente</button>
           <button class="nav-button" type="button" data-view="new-loan"><span aria-hidden="true">＋</span> Nuevo préstamo</button>
         </nav>
         <div class="sidebar-bottom">
@@ -226,6 +244,67 @@
                 <h3>No hay préstamos para este período</h3>
                 <p>Prueba otra fecha o cambia el concepto seleccionado.</p>
               </div>
+            </section>
+          </section>
+
+          <section class="view-panel" id="cashflow-view" hidden aria-label="Caja y gastos del cobrador">
+            <section class="section-card">
+              <div class="section-heading">
+                <div><h2>Cierre de caja</h2><p class="muted">Dinero inicial + recogido − gastos − capital prestado + papelería.</p></div>
+              </div>
+              <form class="ledger-filters" id="cash-summary-filters">
+                <div class="field"><label for="cash-period">Período</label><select id="cash-period" name="period"><option value="day">Diario</option><option value="week">Semanal</option><option value="month">Mensual</option></select></div>
+                <div class="field"><label for="cash-date">Fecha</label><input id="cash-date" name="date" type="date" required></div>
+                <button class="button button-primary" type="submit" id="cash-summary-search">Consultar</button>
+              </form>
+              <div class="summary-grid cash-summary-grid">
+                <article class="summary-card"><span class="summary-label">Dinero inicial</span><strong class="summary-value" id="cash-opening-total">$0.00</strong></article>
+                <article class="summary-card"><span class="summary-label">Total recogido</span><strong class="summary-value" id="cash-collected-total">$0.00</strong></article>
+                <article class="summary-card"><span class="summary-label">Gastos</span><strong class="summary-value" id="cash-expenses-total">$0.00</strong></article>
+                <article class="summary-card"><span class="summary-label">Capital prestado</span><strong class="summary-value" id="cash-principal-total">$0.00</strong></article>
+                <article class="summary-card"><span class="summary-label">Papelería</span><strong class="summary-value" id="cash-paperwork-total">$0.00</strong></article>
+                <article class="summary-card summary-main"><span class="summary-label">Saldo esperado</span><strong class="summary-value" id="cash-expected-total">$0.00</strong></article>
+              </div>
+              <div class="ledger-table-wrap"><table class="ledger-table"><thead><tr><th>COBRADOR</th><th>DINERO INICIAL</th><th>RECOGIDO</th><th>GASTOS</th><th>CAPITAL PRESTADO</th><th>PAPELERÍA</th><th>SALDO ESPERADO</th></tr></thead><tbody id="cash-summary-rows"></tbody></table></div>
+            </section>
+            <div class="cashflow-forms">
+              <section class="section-card">
+                <h2>Registrar dinero inicial</h2>
+                <form class="stack" id="cash-opening-form">
+                  <div class="field"><label for="cash-opening-date">Fecha</label><input id="cash-opening-date" name="date" type="date" required></div>
+                  <div class="field" id="cash-opening-collector-field" hidden><label for="cash-opening-collector">Cobrador</label><select id="cash-opening-collector" name="collector"><option value="">Selecciona cobrador</option></select></div>
+                  <div class="field"><label for="cash-opening-amount">Dinero entregado para prestar</label><input id="cash-opening-amount" name="opening_amount" type="number" min="0" step="0.01" required></div>
+                  <div class="field"><label for="cash-opening-notes">Nota (opcional)</label><input id="cash-opening-notes" name="notes" maxlength="240"></div>
+                  <button class="button button-primary" type="submit">Guardar dinero inicial</button>
+                </form>
+              </section>
+              <section class="section-card">
+                <h2>Registrar gasto diario</h2>
+                <form class="stack" id="expense-form">
+                  <div class="field"><label for="expense-date">Fecha</label><input id="expense-date" name="spent_on" type="date" required></div>
+                  <div class="field" id="expense-collector-field" hidden><label for="expense-collector">Cobrador</label><select id="expense-collector" name="collector"><option value="">Selecciona cobrador</option></select></div>
+                  <div class="field"><label for="expense-category">Tipo de gasto</label><select id="expense-category" name="category"><option value="transport">Transporte</option><option value="food">Alimentación</option><option value="supplies">Papelería e insumos</option><option value="other">Otro</option></select></div>
+                  <div class="field"><label for="expense-description">Descripción</label><input id="expense-description" name="description" maxlength="240" placeholder="Ej. gasolina para ruta" required></div>
+                  <div class="field"><label for="expense-amount">Valor</label><input id="expense-amount" name="amount" type="number" min="0.01" step="0.01" required></div>
+                  <div class="field"><label for="expense-notes">Observaciones (opcional)</label><textarea id="expense-notes" name="notes" rows="2"></textarea></div>
+                  <button class="button button-primary" type="submit">Guardar gasto</button>
+                </form>
+              </section>
+            </div>
+            <section class="section-card"><div class="section-heading"><div><h2>Gastos del período</h2><p class="muted">Cada gasto queda asociado a un cobrador y una fecha.</p></div></div><div class="ledger-table-wrap"><table class="ledger-table"><thead><tr><th>FECHA</th><th>COBRADOR</th><th>TIPO</th><th>DESCRIPCIÓN</th><th>VALOR</th></tr></thead><tbody id="expense-rows"></tbody></table></div><p class="muted" id="expenses-empty" hidden>No hay gastos registrados para este período.</p></section>
+          </section>
+
+          <section class="view-panel" id="customer-summary-view" hidden aria-label="Resumen por cliente">
+            <section class="section-card">
+              <div class="section-heading"><div><h2>Cartera consolidada por cliente</h2><p class="muted">Una fila por cliente. Abre el detalle para consultar sus préstamos y amortización.</p></div></div>
+              <form class="ledger-filters" id="customer-summary-filters">
+                <div class="field"><label for="customer-summary-search">Nombre del cliente</label><input id="customer-summary-search" name="search" type="search" placeholder="Buscar por nombre"></div>
+                <div class="field"><label for="customer-summary-start">Desde</label><input id="customer-summary-start" name="start" type="date"></div>
+                <div class="field"><label for="customer-summary-end">Hasta</label><input id="customer-summary-end" name="end" type="date"></div>
+                <button class="button button-primary" type="submit" id="customer-summary-button">Buscar</button>
+              </form>
+              <div class="ledger-table-wrap"><table class="ledger-table"><thead><tr><th>CLIENTE</th><th>PRÉSTAMOS</th><th>CAPITAL</th><th>PAPELERÍA</th><th>INTERESES</th><th>TOTAL A PAGAR</th><th>RECOGIDO</th><th>SALDO</th><th>DETALLE</th></tr></thead><tbody id="customer-summary-rows"></tbody><tfoot id="customer-summary-totals"></tfoot></table></div>
+              <div class="empty-state" id="customer-summary-empty" hidden><h3>No se encontraron clientes</h3><p>Prueba otro nombre o rango de fechas.</p></div>
             </section>
           </section>
 
