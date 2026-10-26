@@ -15,6 +15,6 @@ Cada negocio conserva su UUID como identificador técnico (`Tenant.id`) y expone
 
 Las solicitudes se guardan con el tenant explícito, una restricción que evita dos solicitudes pendientes simultáneas del mismo usuario para el mismo negocio, y una política PostgreSQL RLS. La revisión se limita al negocio indicado por el encabezado y al rol propietario.
 
-## Límites de esta entrega
+## Interfaz y validación
 
-Los endpoints y la persistencia están añadidos, pero aún falta integrar el formulario de código, el estado de solicitud pendiente y la bandeja de aprobación en la interfaz visual. El empleado no debe poder elegir su rol ni marcarse a sí mismo como aceptado.
+El portal de préstamos incorpora registro de cuenta con código de negocio, una pantalla para enviar solicitudes pendientes y una bandeja para que el propietario las acepte o rechace. Aun así, hay que validar el flujo completo en el navegador y contra PostgreSQL/PostGIS antes de producción. El empleado no puede elegir su rol ni marcarse a sí mismo como aceptado.
