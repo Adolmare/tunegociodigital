@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.db import IntegrityError, transaction
 from django.db.models import Case, DecimalField, F, Sum, When
 from django.utils import timezone
 from rest_framework import serializers, status
@@ -45,8 +46,13 @@ class CollectorDailyCashSerializer(serializers.ModelSerializer):
             if request.membership.role == "employee" and collector is not None and collector.user_id != request.user.pk:
                 raise serializers.ValidationError({"collector": "Solo puedes registrar tu propia caja."})
             selected_date = attrs.get("date", getattr(self.instance, "date", None))
-            if self.instance is None and collector is not None and selected_date is not None:
-                if CollectorDailyCash.objects.filter(collector=collector, date=selected_date).exists():
+            if collector is not None and selected_date is not None:
+                duplicate_opening = CollectorDailyCash.objects.filter(
+                    collector=collector, date=selected_date
+                )
+                if self.instance is not None:
+                    duplicate_opening = duplicate_opening.exclude(pk=self.instance.pk)
+                if duplicate_opening.exists():
                     raise serializers.ValidationError({"date": "Ya existe un dinero inicial registrado para este cobrador en esa fecha."})
         return attrs
 
@@ -112,9 +118,21 @@ class CollectorDailyCashViewSet(ActionMinRoleMixin, TenantViewSet):
             ).first()
             if collector is None:
                 raise ValidationError({"collector": "No tienes un perfil de cobrador activo."})
-            serializer.save(collector=collector, tenant=self.request.tenant)
+            save_kwargs = {"collector": collector, "tenant": self.request.tenant}
         else:
-            serializer.save(tenant=self.request.tenant)
+            save_kwargs = {"tenant": self.request.tenant}
+        try:
+            with transaction.atomic():
+                serializer.save(**save_kwargs)
+        except IntegrityError:
+            raise ValidationError({"date": "Ya existe un dinero inicial para ese cobrador y fecha."})
+
+    def perform_update(self, serializer):
+        try:
+            with transaction.atomic():
+                serializer.save()
+        except IntegrityError:
+            raise ValidationError({"date": "Ya existe un dinero inicial para ese cobrador y fecha."})
 
 
 class CollectorExpenseViewSet(ActionMinRoleMixin, TenantViewSet):
@@ -155,6 +173,10 @@ class CollectorExpenseViewSet(ActionMinRoleMixin, TenantViewSet):
             serializer.save(collector=collector, tenant=self.request.tenant)
         else:
             serializer.save(tenant=self.request.tenant)
+
+    def perform_update(self, serializer):
+        with transaction.atomic():
+            serializer.save()
 
 
 class CollectorCashSummaryView(TenantContextMixin, APIView):
