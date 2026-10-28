@@ -29,9 +29,19 @@ from tenants.api import (
 
 from employees.models import Employee
 
-from .models import CollectionRoute, Loan, LoanInstallment, LoanPayment, RouteStop
+from .models import (
+    CollectionRoute,
+    CollectorDailyClose,
+    CollectorExpense,
+    Loan,
+    LoanInstallment,
+    LoanPayment,
+    RouteStop,
+)
 from .serializers import (
     CollectionRouteSerializer,
+    CollectorDailyCloseSerializer,
+    CollectorExpenseSerializer,
     LoanLedgerQuerySerializer,
     LoanInstallmentSerializer,
     LoanPaymentSerializer,
@@ -69,6 +79,7 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
         "retrieve": "employee",
         "create": "employee",
         "collection_today": "employee",
+        "collector_summary": "employee",
         "ledger": "owner",
         "destroy": "owner",
         "update": "manager",
@@ -120,6 +131,77 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
             data = LoanInstallmentSerializer(page, many=True).data
             return self.get_paginated_response(data)
         return Response(LoanInstallmentSerializer(installments, many=True).data)
+
+    @action(detail=False, methods=["get"], url_path="collector-summary")
+    def collector_summary(self, request):
+        period = request.query_params.get("period", "day")
+        selected_date = request.query_params.get("date") or timezone.localdate().isoformat()
+        filters = LoanLedgerQuerySerializer(data={
+            "period": period,
+            "date": selected_date,
+        })
+        filters.is_valid(raise_exception=True)
+        period_start, period_end = ledger_period_dates(
+            filters.validated_data["period"],
+            filters.validated_data["date"],
+        )
+        employees = Employee.objects.filter(is_active=True, deleted_at__isnull=True)
+        if request.membership.role == "employee":
+            employees = employees.filter(user=request.user)
+        results = []
+        for employee in employees:
+            payments = LoanPayment.objects.filter(
+                collector=employee,
+                paid_at__date__gte=period_start,
+                paid_at__date__lte=period_end,
+            ).aggregate(total=Sum(
+                Case(
+                    When(direction="reversal", then=-F("amount")),
+                    default=F("amount"),
+                    output_field=DecimalField(max_digits=14, decimal_places=2),
+                )
+            ))["total"] or Decimal("0.00")
+            expenses = CollectorExpense.objects.filter(
+                collector=employee,
+                date__gte=period_start,
+                date__lte=period_end,
+            ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+            loans_issued = Loan.objects.filter(
+                collector=employee,
+                start_date__gte=period_start,
+                start_date__lte=period_end,
+            ).aggregate(total=Sum("principal"))["total"] or Decimal("0.00")
+            close_totals = CollectorDailyClose.objects.filter(
+                collector=employee,
+                date__gte=period_start,
+                date__lte=period_end,
+            ).aggregate(
+                opening_cash=Sum("opening_cash"),
+                paperwork=Sum("paperwork_amount"),
+            )
+            opening_cash = close_totals["opening_cash"] or Decimal("0.00")
+            paperwork = close_totals["paperwork"] or Decimal("0.00")
+            results.append({
+                "collector_id": str(employee.pk),
+                "collector": employee.full_name,
+                "opening_cash": str(opening_cash),
+                "collected": str(payments),
+                "expenses": str(expenses),
+                "loans_issued": str(loans_issued),
+                "paperwork": str(paperwork),
+                "cash_balance": str(opening_cash + payments - expenses - loans_issued + paperwork),
+            })
+        totals = {
+            key: sum((Decimal(row[key]) for row in results), Decimal("0.00"))
+            for key in ("opening_cash", "collected", "expenses", "loans_issued", "paperwork", "cash_balance")
+        }
+        return Response({
+            "period": period,
+            "period_start": period_start.isoformat(),
+            "period_end": period_end.isoformat(),
+            "collectors": results,
+            "totals": {key: str(value) for key, value in totals.items()},
+        })
 
     @action(detail=False, methods=["get"])
     def ledger(self, request):
@@ -453,3 +535,95 @@ class RouteStopViewSet(ActionMinRoleMixin, TenantViewSet):
         if self.request.membership.role == "employee":
             queryset = queryset.filter(route__collector__user=self.request.user)
         return queryset
+
+
+class CollectorDailyCloseViewSet(ActionMinRoleMixin, TenantViewSet):
+    required_tool = "loans"
+    min_role = "manager"
+    role_by_action = {
+        "list": "employee",
+        "retrieve": "employee",
+        "create": "employee",
+        "update": "employee",
+        "partial_update": "employee",
+    }
+    serializer_class = CollectorDailyCloseSerializer
+
+    def get_queryset(self):
+        queryset = CollectorDailyClose.objects.select_related("collector")
+        if self.request.membership.role == "employee":
+            queryset = queryset.filter(collector__user=self.request.user)
+        return queryset
+
+    def perform_create(self, serializer):
+        collector = self._collector(serializer.validated_data.get("collector"))
+        close, created = CollectorDailyClose.objects.get_or_create(
+            tenant=self.request.tenant,
+            collector=collector,
+            date=serializer.validated_data["date"],
+            defaults={
+                "opening_cash": serializer.validated_data["opening_cash"],
+                "paperwork_amount": serializer.validated_data["paperwork_amount"],
+            },
+        )
+        if not created:
+            close.opening_cash = serializer.validated_data["opening_cash"]
+            close.paperwork_amount = serializer.validated_data["paperwork_amount"]
+            close.save(update_fields=["opening_cash", "paperwork_amount", "updated_at"])
+        serializer.instance = close
+
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        collector = self._collector(serializer.validated_data.get("collector", instance.collector))
+        serializer.save(collector=collector)
+
+    def _collector(self, requested):
+        if self.request.membership.role == "employee":
+            requested = Employee.objects.filter(
+                user=self.request.user,
+                is_active=True,
+                deleted_at__isnull=True,
+            ).first()
+        if requested is None or requested.tenant_id != self.request.tenant.pk:
+            raise ValidationError({"collector": "Selecciona un cobrador activo del negocio."})
+        return requested
+
+
+class CollectorExpenseViewSet(ActionMinRoleMixin, TenantViewSet):
+    required_tool = "loans"
+    min_role = "manager"
+    role_by_action = {
+        "list": "employee",
+        "retrieve": "employee",
+        "create": "employee",
+        "update": "employee",
+        "partial_update": "employee",
+        "destroy": "manager",
+    }
+    serializer_class = CollectorExpenseSerializer
+
+    def get_queryset(self):
+        queryset = CollectorExpense.objects.select_related("collector")
+        if self.request.membership.role == "employee":
+            queryset = queryset.filter(collector__user=self.request.user)
+        return queryset
+
+    def perform_create(self, serializer):
+        collector = self._collector(serializer.validated_data.get("collector"))
+        serializer.save(tenant=self.request.tenant, collector=collector)
+
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        collector = self._collector(serializer.validated_data.get("collector", instance.collector))
+        serializer.save(collector=collector)
+
+    def _collector(self, requested):
+        if self.request.membership.role == "employee":
+            requested = Employee.objects.filter(
+                user=self.request.user,
+                is_active=True,
+                deleted_at__isnull=True,
+            ).first()
+        if requested is None or requested.tenant_id != self.request.tenant.pk:
+            raise ValidationError({"collector": "Selecciona un cobrador activo del negocio."})
+        return requested

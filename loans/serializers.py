@@ -12,9 +12,12 @@ from employees.models import Employee
 
 from .models import (
     CollectionRoute,
+    CollectorDailyClose,
+    CollectorExpense,
     Loan,
     LoanInstallment,
     LoanPayment,
+    PaymentAllocation,
     RouteStop,
 )
 
@@ -73,6 +76,9 @@ class LoanInstallmentSerializer(serializers.ModelSerializer):
     pending_amount = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
+    principal_due = serializers.SerializerMethodField()
+    interest_due = serializers.SerializerMethodField()
+    payment_history = serializers.SerializerMethodField()
 
     def get_pending_amount(self, obj):
         return obj.amount_due - obj.amount_paid
@@ -89,6 +95,33 @@ class LoanInstallmentSerializer(serializers.ModelSerializer):
             return "partial"
         return "pending"
 
+    def get_principal_due(self, obj):
+        loan = obj.loan
+        base_cents, remainder = divmod(int(loan.principal * 100), loan.installments)
+        return Decimal(base_cents + (1 if obj.number <= remainder else 0)) / 100
+
+    def get_interest_due(self, obj):
+        return obj.amount_due - self.get_principal_due(obj)
+
+    def get_payment_history(self, obj):
+        allocations = PaymentAllocation.objects.filter(
+            installment=obj,
+        ).select_related("payment", "payment__collector").order_by("payment__paid_at", "payment_id")
+        return [
+            {
+                "payment_id": str(allocation.payment_id),
+                "paid_at": allocation.payment.paid_at.isoformat(),
+                "amount": str(
+                    -allocation.amount
+                    if allocation.payment.direction == "reversal"
+                    else allocation.amount
+                ),
+                "direction": allocation.payment.direction,
+                "collector": allocation.payment.collector.full_name,
+            }
+            for allocation in allocations
+        ]
+
     class Meta:
         model = LoanInstallment
         exclude = ("tenant",)
@@ -102,6 +135,9 @@ class LoanInstallmentSerializer(serializers.ModelSerializer):
             "amount_due",
             "amount_paid",
             "status",
+            "principal_due",
+            "interest_due",
+            "payment_history",
         )
 
 
@@ -309,3 +345,40 @@ class RouteStopSerializer(serializers.ModelSerializer):
         model = RouteStop
         exclude = ("tenant",)
         read_only_fields = ("id", "created_at", "updated_at")
+
+
+class CollectorDailyCloseSerializer(serializers.ModelSerializer):
+    collector = TenantScopedRelatedField(required=False)
+    collector_name = serializers.CharField(source="collector.full_name", read_only=True)
+    opening_cash = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.00"))
+    paperwork_amount = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.00"))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["collector"].queryset = Employee.objects.filter(
+            is_active=True,
+            deleted_at__isnull=True,
+        )
+
+    class Meta:
+        model = CollectorDailyClose
+        exclude = ("tenant",)
+        read_only_fields = ("id", "created_at", "updated_at", "collector_name")
+
+
+class CollectorExpenseSerializer(serializers.ModelSerializer):
+    collector = TenantScopedRelatedField(required=False)
+    collector_name = serializers.CharField(source="collector.full_name", read_only=True)
+    amount = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.01"))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["collector"].queryset = Employee.objects.filter(
+            is_active=True,
+            deleted_at__isnull=True,
+        )
+
+    class Meta:
+        model = CollectorExpense
+        exclude = ("tenant",)
+        read_only_fields = ("id", "created_at", "updated_at", "collector_name")

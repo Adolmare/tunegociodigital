@@ -213,3 +213,41 @@ class RouteStop(TenantOwnedModel):
                 name="route_stop_visit_order_positive",
             ),
         ]
+
+
+class CollectorDailyClose(TenantOwnedModel):
+    collector = models.ForeignKey(
+        "employees.Employee",
+        on_delete=models.PROTECT,
+        related_name="daily_closes",
+    )
+    date = models.DateField()
+    opening_cash = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    paperwork_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "collector", "date"],
+                name="uniq_collector_daily_close",
+            ),
+            models.CheckConstraint(condition=Q(opening_cash__gte=0), name="close_opening_cash_nonnegative"),
+            models.CheckConstraint(condition=Q(paperwork_amount__gte=0), name="close_paperwork_nonnegative"),
+        ]
+
+
+class CollectorExpense(TenantOwnedModel):
+    collector = models.ForeignKey(
+        "employees.Employee",
+        on_delete=models.PROTECT,
+        related_name="daily_expenses",
+    )
+    date = models.DateField()
+    description = models.CharField(max_length=200)
+    amount = models.DecimalField(max_digits=14, decimal_places=2)
+
+    class Meta:
+        ordering = ["-date", "created_at"]
+        constraints = [
+            models.CheckConstraint(condition=Q(amount__gt=0), name="collector_expense_amount_positive"),
+        ]

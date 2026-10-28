@@ -28,6 +28,21 @@
           <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="Tu contraseña" required>
           <button class="button button-primary button-wide" type="submit">Ingresar <span aria-hidden="true">→</span></button>
         </form>
+        <button class="text-button" id="show-register" type="button">Registrarme como empleado</button>
+        <form id="register-form" class="stack" hidden>
+          <label for="register-name">Nombre completo</label>
+          <input id="register-name" name="full_name" type="text" autocomplete="name" required>
+          <label for="register-username">Usuario</label>
+          <input id="register-username" name="username" type="text" autocomplete="username" required>
+          <label for="register-email">Correo electrónico</label>
+          <input id="register-email" name="email" type="email" autocomplete="email" required>
+          <label for="register-password">Contraseña</label>
+          <input id="register-password" name="password" type="password" autocomplete="new-password" required>
+          <label for="register-business-id">ID del negocio</label>
+          <input id="register-business-id" name="business_id" type="text" autocomplete="off" required>
+          <button class="button button-primary button-wide" type="submit">Crear cuenta y solicitar acceso</button>
+          <button class="text-button" id="show-login" type="button">Ya tengo cuenta</button>
+        </form>
       </div>
       <p class="auth-footnote">Acceso seguro para tu equipo de trabajo.</p>
     </section>
@@ -43,6 +58,11 @@
         <p class="muted">Selecciona la empresa cuya cartera quieres consultar.</p>
         <div class="notice notice-error" id="tenant-error" role="alert" hidden></div>
         <div id="tenant-options" class="tenant-options"></div>
+        <form id="join-business-form" class="stack join-business-form">
+          <label for="join-business-id">Vincularme a un negocio</label>
+          <input id="join-business-id" name="business_id" type="text" placeholder="ID del negocio" required>
+          <button class="button button-primary button-wide" type="submit">Solicitar acceso</button>
+        </form>
         <button class="text-button" id="tenant-logout" type="button">Cerrar sesión</button>
       </div>
     </section>
@@ -57,6 +77,8 @@
         <nav class="side-nav" aria-label="Navegación principal">
           <button class="nav-button is-active" type="button" data-view="home"><span aria-hidden="true">▦</span> Resumen</button>
           <button class="nav-button" type="button" data-view="collections"><span aria-hidden="true">↗</span> Cobros de hoy</button>
+          <button class="nav-button" type="button" data-view="cash-analysis"><span aria-hidden="true">$</span> Cierre y análisis</button>
+          <button class="nav-button" id="requests-nav" type="button" data-view="requests" hidden><span aria-hidden="true">✓</span> Solicitudes de empleados</button>
           <button class="nav-button" id="ledger-nav" type="button" data-view="ledger" hidden><span aria-hidden="true">▤</span> Libro de cartera</button>
           <button class="nav-button" type="button" data-view="new-loan"><span aria-hidden="true">＋</span> Nuevo préstamo</button>
         </nav>
@@ -78,6 +100,7 @@
           </div>
           <div class="topbar-spacer"></div>
           <div class="tenant-chip"><span class="online-dot"></span><span id="topbar-tenant-name">Tu negocio</span></div>
+          <span class="business-id" id="business-id"></span>
           <button class="avatar avatar-small" id="topbar-avatar" type="button" aria-label="Cerrar sesión">T</button>
         </header>
 

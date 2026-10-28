@@ -3,6 +3,8 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     CollectionRouteViewSet,
+    CollectorDailyCloseViewSet,
+    CollectorExpenseViewSet,
     LoanPaymentEventStreamView,
     LoanInstallmentViewSet,
     LoanPaymentViewSet,
@@ -16,6 +18,8 @@ router.register(r"loan-payments", LoanPaymentViewSet, basename="loan-payment")
 router.register(r"loan-installments", LoanInstallmentViewSet, basename="loan-installment")
 router.register(r"collection-routes", CollectionRouteViewSet, basename="collection-route")
 router.register(r"route-stops", RouteStopViewSet, basename="route-stop")
+router.register(r"collector-daily-closes", CollectorDailyCloseViewSet, basename="collector-daily-close")
+router.register(r"collector-expenses", CollectorExpenseViewSet, basename="collector-expense")
 
 urlpatterns = [
     path(

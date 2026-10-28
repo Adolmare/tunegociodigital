@@ -30,6 +30,44 @@ class Membership(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(fields=["user", "tenant"], name="uniq_user_tenant")]
 
+
+class EmployeeJoinRequest(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pendiente"
+        APPROVED = "approved", "Aprobada"
+        REJECTED = "rejected", "Rechazada"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="employee_join_requests",
+    )
+    tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.CASCADE,
+        related_name="employee_join_requests",
+    )
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_employee_join_requests",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "tenant"],
+                condition=models.Q(status="pending"),
+                name="uniq_pending_employee_join_request",
+            ),
+        ]
+
+
 class Tool(models.Model):                  # catalog, reservations, deliveries, loans, accounting
     code = models.SlugField(unique=True)
     name = models.CharField(max_length=80)
