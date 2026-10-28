@@ -1,9 +1,22 @@
 from rest_framework import serializers
 
-from .models import BusinessType, Tenant
+from .models import BusinessType, Membership, Tenant
 
 
 class TenantSerializer(serializers.ModelSerializer):
+    join_code = serializers.SerializerMethodField()
+
+    def get_join_code(self, obj):
+        request = self.context.get("request")
+        if request is None or not request.user.is_authenticated:
+            return None
+        role = Membership.objects.filter(
+            tenant=obj, user=request.user, is_active=True
+        ).values_list("role", flat=True).first()
+        if role in {Membership.Role.OWNER, Membership.Role.ADMIN}:
+            return obj.join_code
+        return None
+
     class Meta:
         model = Tenant
         fields = [
