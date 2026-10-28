@@ -15,9 +15,10 @@ from tenants.serializers import TenantSerializer
 
 
 @pytest.mark.django_db
-def test_join_code_is_only_serialized_for_owner_and_admin(two_tenants):
+def test_join_code_is_only_serialized_for_owner_and_admin(two_tenants, rls_context):
     tenant = two_tenants["tenant_a"]
     owner = two_tenants["user_a"]
+    rls_context(owner, tenant)
     employee_user = User.objects.create(email="join-code-employee@example.test")
     owner_membership = Membership.objects.get(user=owner, tenant=tenant)
     employee_membership = Membership.objects.create(
