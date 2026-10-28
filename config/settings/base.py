@@ -132,5 +132,6 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "register": "5/hour",
         "login": "10/minute",
+        "tenant_join_request": "5/hour",
     },
 }
