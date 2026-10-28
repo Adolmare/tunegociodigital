@@ -6,6 +6,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .throttles import TenantJoinRequestThrottle
+
 from employees.models import Employee
 from tenants.api import HasRole, TenantContextMixin, set_database_context
 from tenants.models import Membership, Tenant, TenantJoinRequest
@@ -13,6 +15,8 @@ from tenants.models import Membership, Tenant, TenantJoinRequest
 
 class TenantJoinRequestCreateAPIView(APIView):
     permission_classes = [IsAuthenticated]
+    throttle_classes = [TenantJoinRequestThrottle]
+    throttle_scope = "tenant_join_request"
 
     def post(self, request):
         code = str(request.data.get("join_code", "")).strip().upper()
