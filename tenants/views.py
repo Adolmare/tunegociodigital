@@ -18,7 +18,7 @@ class TenantListCreateAPIView(generics.GenericAPIView):
             memberships__user=request.user,
             memberships__is_active=True,
         ).distinct()
-        return Response(TenantSerializer(tenants, many=True).data)
+        return Response(TenantSerializer(tenants, many=True, context={"request": request}).data)
 
     def post(self, request, *args, **kwargs):
         set_database_context(request.user.pk)
@@ -33,7 +33,7 @@ class TenantListCreateAPIView(generics.GenericAPIView):
         membership = Membership.objects.get(user=request.user, tenant=tenant)
         return Response(
             {
-                "tenant": TenantSerializer(tenant).data,
+                "tenant": TenantSerializer(tenant, context={"request": request}).data,
                 "role": membership.role,
             },
             status=status.HTTP_201_CREATED,
