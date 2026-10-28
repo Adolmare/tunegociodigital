@@ -1,5 +1,6 @@
 from django.db import models
 from django.db.models import Q
+from django.utils import timezone
 
 from core.models import TenantOwnedModel
 
@@ -211,5 +212,62 @@ class RouteStop(TenantOwnedModel):
             models.CheckConstraint(
                 condition=Q(visit_order__gt=0),
                 name="route_stop_visit_order_positive",
+            ),
+        ]
+
+
+class CollectorDailyCash(TenantOwnedModel):
+    """Dinero base que recibe un cobrador para operar en una fecha concreta."""
+
+    collector = models.ForeignKey(
+        "employees.Employee",
+        on_delete=models.PROTECT,
+        related_name="daily_cash_openings",
+    )
+    date = models.DateField(default=timezone.localdate)
+    opening_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    notes = models.CharField(max_length=240, blank=True, default="")
+
+    class Meta:
+        ordering = ["-date", "collector__full_name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "collector", "date"],
+                name="uniq_collector_daily_cash",
+            ),
+            models.CheckConstraint(
+                condition=Q(opening_amount__gte=0),
+                name="collector_opening_amount_nonnegative",
+            ),
+        ]
+
+
+class CollectorExpense(TenantOwnedModel):
+    """Gasto operativo declarado por un cobrador, con trazabilidad diaria."""
+
+    CATEGORY_CHOICES = [
+        ("transport", "Transporte"),
+        ("food", "Alimentación"),
+        ("supplies", "Papelería e insumos"),
+        ("other", "Otro"),
+    ]
+
+    collector = models.ForeignKey(
+        "employees.Employee",
+        on_delete=models.PROTECT,
+        related_name="daily_expenses",
+    )
+    spent_on = models.DateField(default=timezone.localdate)
+    category = models.CharField(max_length=16, choices=CATEGORY_CHOICES, default="other")
+    description = models.CharField(max_length=240)
+    amount = models.DecimalField(max_digits=14, decimal_places=2)
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["-spent_on", "-created_at"]
+        constraints = [
+            models.CheckConstraint(
+                condition=Q(amount__gt=0),
+                name="collector_expense_amount_positive",
             ),
         ]

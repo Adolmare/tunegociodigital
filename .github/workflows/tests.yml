@@ -30,8 +30,21 @@ jobs:
           python-version: "3.14"
           cache: pip
           cache-dependency-path: requirements.txt
+      - name: Check portal JavaScript syntax
+        run: node --check loans/static/loans/portal.js
+      - name: Install GeoDjango system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gdal-bin libgdal-dev libgeos-dev
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
+      - name: Check migration state
+        env:
+          DJANGO_SETTINGS_MODULE: config.settings.test
+          SECRET_KEY: ci-only-not-a-production-secret
+          DATABASE_URL: postgresql://tn_owner:owner_pass@localhost:5432/tunegocio
+          MIGRATOR_DATABASE_URL: postgresql://tn_owner:owner_pass@localhost:5432/tunegocio
+        run: python manage.py makemigrations --check --dry-run
       - name: Create restricted application role
         env:
           MIGRATOR_DATABASE_URL: postgresql://tn_owner:owner_pass@localhost:5432/tunegocio

@@ -11,6 +11,8 @@
     loans: [],
     collections: [],
     ledger: null,
+    cashSummary: null,
+    customerSummary: null,
     employees: [],
     view: "home",
     eventController: null,
@@ -62,6 +64,8 @@
     elements.error.hidden = true;
     document.getElementById("auth-error").hidden = true;
     document.getElementById("tenant-error").hidden = true;
+    document.getElementById("auth-status").hidden = true;
+    document.getElementById("tenant-status").hidden = true;
   }
 
   function errorMessage(data, fallback) {
@@ -203,7 +207,7 @@
       if (!memberships.length) {
         setScreen("tenants");
         document.getElementById("tenant-options").innerHTML =
-          '<p class="muted">Tu usuario todavía no tiene una empresa activa.</p>';
+          '<p class="muted">Tu usuario todavía no tiene una empresa activa. Si ya solicitaste acceso con un código, espera la aprobación del propietario.</p>';
         return;
       }
       const options = document.getElementById("tenant-options");
@@ -238,9 +242,14 @@
     document.getElementById("sidebar-avatar").textContent = initials(displayName);
     document.getElementById("topbar-avatar").textContent = initials(displayName);
     const isOwner = state.role === "owner";
+    document.getElementById("business-code-panel").hidden = !isOwner;
+    document.getElementById("business-join-code").textContent = membership.tenant_join_code || "—";
     document.getElementById("ledger-nav").hidden = !isOwner;
     document.getElementById("mobile-ledger-nav").hidden = !isOwner;
-    document.getElementById("mobile-loans-nav").hidden = isOwner;
+    document.getElementById("mobile-cashflow-nav").hidden = false;
+    document.getElementById("mobile-customer-nav").hidden = false;
+    document.getElementById("employee-requests-nav").hidden = !isOwner;
+    document.getElementById("mobile-employee-requests-nav").hidden = !isOwner;
     document.getElementById("today-label").textContent = new Intl.DateTimeFormat("es", {
       weekday: "long",
       day: "numeric",
@@ -249,6 +258,9 @@
     const today = new Date();
     document.getElementById("start-date").value = localDateValue(today);
     document.getElementById("ledger-date").value = localDateValue(today);
+    ["cash-date", "cash-opening-date", "expense-date"].forEach((id) => {
+      document.getElementById(id).value = localDateValue(today);
+    });
     clearMessages();
     await loadDashboard();
     if ((rank[state.role] || 0) >= rank.manager) await loadEmployees();
@@ -268,18 +280,28 @@
   function populateCollectors() {
     const loanSelect = document.getElementById("loan-collector");
     const paymentSelect = document.getElementById("payment-collector");
+    const openingSelect = document.getElementById("cash-opening-collector");
+    const expenseSelect = document.getElementById("expense-collector");
     const selectedLoanCollector = loanSelect.value;
     loanSelect.replaceChildren(new Option("Sin asignar", ""));
     paymentSelect.replaceChildren(new Option("Selecciona un cobrador", ""));
+    openingSelect.replaceChildren(new Option("Selecciona un cobrador", ""));
+    expenseSelect.replaceChildren(new Option("Selecciona un cobrador", ""));
     state.employees.forEach((employee) => {
       const label = employee.full_name || employee.email || `Cobrador ${employee.id}`;
       loanSelect.add(new Option(label, employee.id));
       paymentSelect.add(new Option(label, employee.id));
+      openingSelect.add(new Option(label, employee.id));
+      expenseSelect.add(new Option(label, employee.id));
     });
     loanSelect.value = selectedLoanCollector;
     const manager = (rank[state.role] || 0) >= rank.manager;
     document.getElementById("collector-field").hidden = !manager;
     document.getElementById("payment-collector-field").hidden = !manager;
+    document.getElementById("cash-opening-collector-field").hidden = !manager;
+    document.getElementById("expense-collector-field").hidden = !manager;
+    openingSelect.required = manager;
+    expenseSelect.required = manager;
   }
 
   async function loadDashboard() {
@@ -366,13 +388,156 @@
     });
   }
 
+
+
+  async function loadEmployeeRequests() {
+    const container = document.getElementById("employee-request-list");
+    try {
+      const requests = getRows(await api("/tenant-join-requests/manage/"));
+      document.getElementById("employee-requests-empty").hidden = requests.length > 0;
+      container.replaceChildren();
+      requests.forEach((item) => {
+        const row = document.createElement("article");
+        row.className = "loan-row employee-request-row";
+        const name = item.full_name || item.username || "Usuario";
+        row.innerHTML =
+          `<div class="loan-person"><span class="customer-avatar">${escapeHtml(initials(name))}</span>` +
+          `<div><strong>${escapeHtml(name)}</strong><span>${escapeHtml(item.email)}</span>` +
+          `<span>Solicitud ${escapeHtml(displayDate(String(item.created_at || "").slice(0, 10)))}</span></div></div>` +
+          `<div class="loan-detail"><strong>Acceso como cobrador</strong><span>Solo se habilita al aprobar</span></div>` +
+          `<div class="employee-request-actions"><button class="button button-primary" type="button" data-request-accept="${escapeHtml(item.id)}">Aceptar</button>` +
+          `<button class="button button-quiet" type="button" data-request-reject="${escapeHtml(item.id)}">Rechazar</button></div>`;
+        container.append(row);
+      });
+    } catch (error) {
+      showError(error.message);
+    }
+  }
+
+  async function decideEmployeeRequest(requestId, decision, button) {
+    setBusy(button, true, decision === "accept" ? "Aceptando…" : "Rechazando…");
+    try {
+      await api("/tenant-join-requests/manage/", {
+        method: "POST",
+        body: JSON.stringify({ request_id: requestId, decision }),
+      });
+      await loadEmployeeRequests();
+      await loadEmployees();
+      showToast(decision === "accept" ? "Cobrador aceptado en el negocio." : "Solicitud rechazada.");
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  async function loadCashSummary() {
+    const form = document.getElementById("cash-summary-filters");
+    const params = new URLSearchParams({
+      period: form.elements.period.value,
+      date: form.elements.date.value || localDateValue(),
+    });
+    const button = document.getElementById("cash-summary-search");
+    setBusy(button, true, "Consultando…");
+    try {
+      const report = await api(`/collector-cash-summary/?${params.toString()}`);
+      state.cashSummary = report;
+      const totals = report.totals || {};
+      document.getElementById("cash-opening-total").textContent = money(totals.opening_cash);
+      document.getElementById("cash-collected-total").textContent = money(totals.collected);
+      document.getElementById("cash-expenses-total").textContent = money(totals.expenses);
+      document.getElementById("cash-principal-total").textContent = money(totals.principal_lent);
+      document.getElementById("cash-paperwork-total").textContent = money(totals.paperwork);
+      document.getElementById("cash-expected-total").textContent = money(totals.expected_cash);
+      document.getElementById("cash-summary-rows").innerHTML = (report.rows || []).map((row) =>
+        `<tr><td>${escapeHtml(row.collector_name)}</td><td>${money(row.opening_cash)}</td>` +
+        `<td>${money(row.collected)}</td><td>${money(row.expenses)}</td>` +
+        `<td>${money(row.principal_lent)}</td><td>${money(row.paperwork)}</td>` +
+        `<td><strong>${money(row.expected_cash)}</strong></td></tr>`
+      ).join("");
+      await loadExpenses(report.start_date, report.end_date);
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  async function loadExpenses(start, end) {
+    const params = new URLSearchParams();
+    if (start) params.set("start", start);
+    if (end) params.set("end", end);
+    const expenses = getRows(await api(`/collector-expenses/?${params.toString()}`));
+    const labelsByCategory = {
+      transport: "Transporte", food: "Alimentación", supplies: "Papelería e insumos", other: "Otro",
+    };
+    document.getElementById("expense-rows").innerHTML = expenses.map((expense) =>
+      `<tr><td>${escapeHtml(displayDate(expense.spent_on))}</td>` +
+      `<td>${escapeHtml(expense.collector_name || "")}</td>` +
+      `<td>${escapeHtml(labelsByCategory[expense.category] || expense.category)}</td>` +
+      `<td>${escapeHtml(expense.description)}</td><td>${money(expense.amount)}</td></tr>`
+    ).join("");
+    document.getElementById("expenses-empty").hidden = expenses.length > 0;
+  }
+
+  async function loadCustomerSummary() {
+    const form = document.getElementById("customer-summary-filters");
+    const params = new URLSearchParams();
+    if (form.elements.search.value.trim()) params.set("search", form.elements.search.value.trim());
+    if (form.elements.start.value) params.set("start", form.elements.start.value);
+    if (form.elements.end.value) params.set("end", form.elements.end.value);
+    const button = document.getElementById("customer-summary-button");
+    setBusy(button, true, "Buscando…");
+    try {
+      const report = await api(`/customer-loan-summary/?${params.toString()}`);
+      state.customerSummary = report;
+      const rows = report.rows || [];
+      document.getElementById("customer-summary-empty").hidden = rows.length > 0;
+      document.getElementById("customer-summary-rows").innerHTML = rows.map((customer) => {
+        const loans = (customer.loans || []).map((loan) => {
+          const installments = (loan.installments || []).map((installment) =>
+            `<tr><td>${escapeHtml(installment.number)}</td><td>${escapeHtml(displayDate(installment.due_date))}</td>` +
+            `<td>${money(installment.amount_due)}</td><td>${money(installment.amount_paid)}</td>` +
+            `<td>${money(installment.pending_amount)}</td><td>${escapeHtml(labels[installment.status] || installment.status)}</td></tr>`
+          ).join("");
+          const paymentHistory = (loan.payments || []).map((payment) =>
+            `<tr><td>${escapeHtml(displayDate(payment.date))}</td><td>${money(payment.amount)}</td>` +
+            `<td>${escapeHtml(payment.direction === "reversal" ? "Reversa" : "Abono")}</td>` +
+            `<td>${escapeHtml(payment.collector_name || "")}</td><td>${escapeHtml(payment.method || "")}</td></tr>`
+          ).join("");
+          return `<section class="amortization-loan"><h4>Préstamo ${escapeHtml(loan.date)} · ${escapeHtml(labels[loan.frequency] || loan.frequency)}</h4>` +
+            `<p>Capital ${money(loan.principal)} · Interés ${money(loan.interest)} · Papelería ${money(loan.paperwork)} · Saldo ${money(loan.balance)}</p>` +
+            `<div class="ledger-table-wrap"><table class="ledger-table"><thead><tr><th>CUOTA</th><th>VENCIMIENTO</th><th>VALOR</th><th>PAGADO</th><th>PENDIENTE</th><th>ESTADO</th></tr></thead><tbody>${installments}</tbody></table></div>` +
+            `<h5>Historial de pagos</h5><div class="ledger-table-wrap"><table class="ledger-table"><thead><tr><th>FECHA</th><th>VALOR NETO</th><th>MOVIMIENTO</th><th>COBRADOR</th><th>MÉTODO</th></tr></thead><tbody>${paymentHistory}</tbody></table></div></section>`;
+        }).join("");
+        return `<tr><td><strong>${escapeHtml(customer.customer_name)}</strong></td><td>${escapeHtml(customer.loan_count)}</td>` +
+          `<td>${money(customer.principal)}</td><td>${money(customer.paperwork)}</td><td>${money(customer.interest)}</td>` +
+          `<td>${money(customer.total_payable)}</td><td>${money(customer.collected)}</td><td><strong>${money(customer.balance)}</strong></td>` +
+          `<td><details class="amortization-details"><summary>Ver amortización</summary>${loans || "<p>Sin detalle de préstamos.</p>"}</details></td></tr>`;
+      }).join("");
+      const totals = report.totals || {};
+      document.getElementById("customer-summary-totals").innerHTML = rows.length
+        ? `<tr><th>TOTALES</th><td>${escapeHtml(totals.loan_count || 0)}</td><td>${money(totals.principal)}</td>` +
+          `<td>${money(totals.paperwork)}</td><td>${money(totals.interest)}</td><td>${money(totals.total_payable)}</td>` +
+          `<td>${money(totals.collected)}</td><td>${money(totals.balance)}</td><td></td></tr>`
+        : "";
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
   function showView(view) {
-    if (view === "ledger" && state.role !== "owner") view = "home";
+    if ((view === "ledger" || view === "employee-requests") && state.role !== "owner") view = "home";
     state.view = view;
     const titles = {
       home: ["Resumen", "Una mirada clara a tus préstamos."],
       collections: ["Cobros de hoy", "Cuotas pendientes de tu cartera."],
       ledger: ["Libro de cartera", "Consulta el formato del Excel por período y frecuencia."],
+      cashflow: ["Caja y gastos", "Controla el dinero inicial, los cobros, los préstamos y los gastos."],
+      "customer-summary": ["Resumen por cliente", "Consulta la cartera consolidada y el detalle de amortización."],
+      "employee-requests": ["Solicitudes de empleados", "Aprueba o rechaza las solicitudes de acceso al negocio."],
       "new-loan": ["Nuevo préstamo", "Registra un cliente y define su frecuencia de cobro."],
     };
     document.getElementById("view-title").textContent = titles[view][0];
@@ -380,13 +545,182 @@
     document.querySelectorAll(".view-panel").forEach((panel) => {
       panel.hidden = panel.id !== `${view}-view`;
     });
-    document.querySelectorAll("[data-view]").forEach((button) => {
+  
+  const loginForm = document.getElementById("login-form");
+  const registerForm = document.getElementById("register-form");
+  const registerToggle = document.getElementById("show-register");
+
+  function toggleRegistration(show) {
+    loginForm.hidden = show;
+    loginForm.querySelectorAll("input, button").forEach((field) => { field.disabled = show; });
+    registerForm.hidden = !show;
+    registerForm.querySelectorAll("input, button").forEach((field) => { field.disabled = !show; });
+    registerToggle.hidden = show;
+    document.getElementById("login-title").innerHTML = show
+      ? "Crea tu cuenta<br>de cobrador."
+      : "Tus préstamos,<br>más cerca.";
+  }
+
+  registerToggle.addEventListener("click", () => toggleRegistration(true));
+  document.getElementById("cancel-register").addEventListener("click", () => toggleRegistration(false));
+
+  registerForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    clearMessages();
+    const button = registerForm.querySelector('button[type="submit"]');
+    const form = new FormData(registerForm);
+    const username = String(form.get("username") || "").trim();
+    const password = String(form.get("password") || "");
+    const joinCode = String(form.get("join_code") || "").trim().toUpperCase();
+    setBusy(button, true, "Creando cuenta…");
+    try {
+      const registration = await rawRequest("/auth/register/", {
+        method: "POST",
+        body: JSON.stringify({
+          username,
+          email: String(form.get("email") || "").trim(),
+          full_name: String(form.get("full_name") || "").trim(),
+          password,
+        }),
+      }, false);
+      const registrationData = await registration.json().catch(() => null);
+      if (!registration.ok) throw new Error(errorMessage(registrationData, "No se pudo crear la cuenta."));
+      const loginResponse = await rawRequest("/auth/login/", {
+        method: "POST",
+        body: JSON.stringify({ username, password }),
+      }, false);
+      const loginData = await loginResponse.json().catch(() => null);
+      if (!loginResponse.ok) throw new Error(errorMessage(loginData, "La cuenta se creó, pero no fue posible iniciar sesión."));
+      state.access = loginData.access;
+      state.refresh = loginData.refresh;
+      state.username = username;
+      state.tenant = null;
+      sessionStorage.setItem("loan_access", state.access);
+      sessionStorage.setItem("loan_refresh", state.refresh);
+      sessionStorage.setItem("loan_username", username);
+      const joinResponse = await rawRequest("/tenant-join-requests/", {
+        method: "POST",
+        body: JSON.stringify({ join_code: joinCode }),
+      });
+      const joinData = await joinResponse.json().catch(() => null);
+      setScreen("tenants");
+      if (!joinResponse.ok) {
+        document.getElementById("tenant-options").innerHTML =
+          '<p class="muted">Tu cuenta está creada. Corrige el código o solicita acceso a otro negocio.</p>';
+        showError(errorMessage(joinData, "No se pudo enviar la solicitud de acceso."));
+        toggleRegistration(false);
+        registerForm.reset();
+        return;
+      }
+      registerForm.reset();
+      loginForm.reset();
+      document.getElementById("tenant-options").innerHTML =
+        '<p class="muted">Solicitud enviada. Podrás entrar al negocio cuando el propietario la acepte.</p>';
+      document.getElementById("tenant-join-code").value = "";
+      document.getElementById("tenant-status").textContent = "Cuenta creada y solicitud enviada al propietario.";
+      document.getElementById("tenant-status").hidden = false;
+      toggleRegistration(false);
+    } catch (error) {
+      setScreen("auth");
+      showError(error.message);
+    } finally {
+      setBusy(button, false);
+    }
+  });
+
+  document.getElementById("tenant-join-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    clearMessages();
+    const form = new FormData(event.currentTarget);
+    const button = event.currentTarget.querySelector('button[type="submit"]');
+    setBusy(button, true, "Enviando…");
+    try {
+      const response = await rawRequest("/tenant-join-requests/", {
+        method: "POST",
+        body: JSON.stringify({ join_code: String(form.get("join_code") || "").trim().toUpperCase() }),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(errorMessage(data, "No se pudo enviar la solicitud."));
+      event.currentTarget.reset();
+      document.getElementById("tenant-status").textContent =
+        `Solicitud enviada a ${data.tenant_name}. Espera la aprobación del propietario.`;
+      document.getElementById("tenant-status").hidden = false;
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setBusy(button, false);
+    }
+  });
+
+  document.getElementById("cash-summary-filters").addEventListener("submit", (event) => {
+    event.preventDefault();
+    loadCashSummary();
+  });
+  document.getElementById("customer-summary-filters").addEventListener("submit", (event) => {
+    event.preventDefault();
+    loadCustomerSummary();
+  });
+
+  document.getElementById("cash-opening-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const button = event.currentTarget.querySelector('button[type="submit"]');
+    const data = {
+      date: form.get("date"),
+      opening_amount: form.get("opening_amount"),
+      notes: form.get("notes") || "",
+    };
+    if ((rank[state.role] || 0) >= rank.manager) data.collector = form.get("collector");
+    setBusy(button, true, "Guardando…");
+    try {
+      await api("/collector-daily-cash/", { method: "POST", body: JSON.stringify(data) });
+      event.currentTarget.reset();
+      document.getElementById("cash-opening-date").value = localDateValue();
+      await loadCashSummary();
+      showToast("Dinero inicial registrado.");
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setBusy(button, false);
+    }
+  });
+
+  document.getElementById("expense-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const button = event.currentTarget.querySelector('button[type="submit"]');
+    const data = {
+      spent_on: form.get("spent_on"),
+      category: form.get("category"),
+      description: String(form.get("description") || "").trim(),
+      amount: form.get("amount"),
+      notes: form.get("notes") || "",
+    };
+    if ((rank[state.role] || 0) >= rank.manager) data.collector = form.get("collector");
+    setBusy(button, true, "Guardando…");
+    try {
+      await api("/collector-expenses/", { method: "POST", body: JSON.stringify(data) });
+      event.currentTarget.reset();
+      document.getElementById("expense-date").value = localDateValue();
+      await loadCashSummary();
+      showToast("Gasto registrado.");
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setBusy(button, false);
+    }
+  });
+
+  document.querySelectorAll("[data-view]").forEach((button) => {
       button.classList.toggle("is-active", button.dataset.view === view);
     });
     if (view === "new-loan" && (rank[state.role] || 0) >= rank.manager && !state.employees.length) {
       loadEmployees();
     }
     if (view === "ledger") loadLedger();
+    if (view === "cashflow") loadCashSummary();
+    if (view === "customer-summary") loadCustomerSummary();
+    if (view === "employee-requests") loadEmployeeRequests();
     clearMessages();
   }
 
@@ -560,7 +894,24 @@
   document.querySelectorAll("[data-view]").forEach((button) => {
     button.addEventListener("click", () => showView(button.dataset.view));
   });
+  document.getElementById("copy-join-code").addEventListener("click", async () => {
+    const code = document.getElementById("business-join-code").textContent;
+    if (!code || code === "—") return;
+    try {
+      await navigator.clipboard.writeText(code);
+      showToast("Código del negocio copiado.");
+    } catch (error) {
+      showToast(`Código del negocio: ${code}`);
+    }
+  });
   document.getElementById("refresh-button").addEventListener("click", loadDashboard);
+  document.getElementById("refresh-employee-requests").addEventListener("click", loadEmployeeRequests);
+  document.addEventListener("click", (event) => {
+    const accept = event.target.closest("[data-request-accept]");
+    const reject = event.target.closest("[data-request-reject]");
+    if (accept) decideEmployeeRequest(accept.dataset.requestAccept, "accept", accept);
+    if (reject) decideEmployeeRequest(reject.dataset.requestReject, "reject", reject);
+  });
   document.getElementById("logout-button").addEventListener("click", () => logout());
   document.getElementById("topbar-avatar").addEventListener("click", () => logout());
   document.getElementById("mobile-logout").addEventListener("click", () => logout());
@@ -701,5 +1052,6 @@
     }
   }
 
+  toggleRegistration(false);
   restoreSession();
 })();
