@@ -87,3 +87,47 @@ def test_daily_cash_update_duplicate_returns_validation_error(
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     second.refresh_from_db()
     assert second.date == date(2026, 10, 28)
+
+
+@pytest.mark.django_db
+def test_employee_cannot_create_opening_cash_and_expenses_auto_assign_collector(
+    two_tenants, client_for, rls_context, seeded_tools
+):
+    tenant = two_tenants["tenant_a"]
+    owner = two_tenants["user_a"]
+    rls_context(owner, tenant)
+    enable_tool(tenant, Tool.objects.get(code="loans"))
+
+    collector_user = User.objects.create(email="cashflow-employee-role@example.test")
+    Membership.objects.create(
+        user=collector_user, tenant=tenant, role=Membership.Role.EMPLOYEE
+    )
+    collector = Employee.unscoped.create(
+        tenant=tenant, user=collector_user, full_name="Cobrador Permisos"
+    )
+
+    employee_client = client_for(collector_user, tenant)
+    # Employee cannot register opening cash (must be registered by owner)
+    opening_response = employee_client.post(
+        reverse("collector-daily-cash-list"),
+        {
+            "date": date(2026, 10, 29).isoformat(),
+            "opening_amount": "500.00",
+        },
+        format="json",
+    )
+    assert opening_response.status_code == status.HTTP_403_FORBIDDEN
+
+    # Employee registers expense without specifying collector dropdown -> auto assigned
+    expense_response = employee_client.post(
+        reverse("collector-expense-list"),
+        {
+            "spent_on": date(2026, 10, 29).isoformat(),
+            "category": "transport",
+            "description": "Gasolina moto",
+            "amount": "15.00",
+        },
+        format="json",
+    )
+    assert expense_response.status_code == status.HTTP_201_CREATED
+    assert expense_response.data["collector"] == collector.pk

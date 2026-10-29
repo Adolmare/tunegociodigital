@@ -39,7 +39,9 @@ class CollectorDailyCashSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         collector = attrs.get("collector", getattr(self.instance, "collector", None))
         if request is not None:
-            if collector is None and request.membership.role != "employee":
+            if request.membership.role == "employee":
+                raise serializers.ValidationError({"collector": "El registro de dinero inicial solo puede realizarlo el dueño."})
+            if collector is None:
                 raise serializers.ValidationError({"collector": "Selecciona el cobrador."})
             if collector is not None and collector.tenant_id != request.tenant.pk:
                 raise serializers.ValidationError({"collector": "El cobrador no pertenece al negocio activo."})
@@ -92,7 +94,7 @@ class CollectorDailyCashViewSet(ActionMinRoleMixin, TenantViewSet):
     role_by_action = {
         "list": "employee",
         "retrieve": "employee",
-        "create": "employee",
+        "create": "manager",
         "update": "manager",
         "partial_update": "manager",
     }

@@ -205,7 +205,8 @@ def overdue_installments(*, tenant, as_of=None, collector=None):
         loan__status__in=["active", "delinquent"],
     )
     if collector is not None:
-        queryset = queryset.filter(loan__collector=collector)
+        assigned = queryset.filter(loan__collector=collector)
+        queryset = assigned if assigned.exists() else queryset.filter(loan__collector__isnull=True)
     return queryset.order_by("due_date", "loan__customer__full_name", "number")
 
 

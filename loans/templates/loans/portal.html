@@ -80,10 +80,10 @@
           <button class="nav-button is-active" type="button" data-view="home"><span aria-hidden="true">▦</span> Resumen</button>
           <button class="nav-button" type="button" data-view="collections"><span aria-hidden="true">↗</span> Cobros de hoy</button>
           <button class="nav-button" id="ledger-nav" type="button" data-view="ledger" hidden><span aria-hidden="true">▤</span> Libro de cartera</button>
-          <button class="nav-button" type="button" data-view="cashflow"><span aria-hidden="true">$</span> Caja y gastos</button>
-          <button class="nav-button" type="button" data-view="customer-summary"><span aria-hidden="true">♙</span> Resumen por cliente</button>
+          <button class="nav-button" id="cashflow-nav" type="button" data-view="cashflow"><span aria-hidden="true">$</span> Caja y gastos</button>
+          <button class="nav-button" id="customer-summary-nav" type="button" data-view="customer-summary"><span aria-hidden="true">♙</span> Resumen por cliente</button>
           <button class="nav-button" id="employee-requests-nav" type="button" data-view="employee-requests" hidden><span aria-hidden="true">✓</span> Solicitudes de empleados</button>
-          <button class="nav-button" type="button" data-view="new-loan"><span aria-hidden="true">＋</span> Nuevo préstamo</button>
+          <button class="nav-button" id="new-loan-nav" type="button" data-view="new-loan"><span aria-hidden="true">＋</span> Nuevo préstamo</button>
         </nav>
         <div class="sidebar-bottom">
           <div class="avatar" id="sidebar-avatar">T</div>
@@ -113,7 +113,7 @@
               <h1 id="view-title">Resumen</h1>
               <p class="muted" id="view-subtitle">Una mirada clara a tus préstamos.</p>
             </div>
-            <button class="button button-primary desktop-new-button" type="button" data-view="new-loan">
+            <button class="button button-primary desktop-new-button" id="desktop-new-button" type="button" data-view="new-loan">
               <span aria-hidden="true">＋</span> Nuevo préstamo
             </button>
           </div>
@@ -145,7 +145,7 @@
                 <strong class="summary-value" id="today-count">0</strong>
                 <button class="inline-link" type="button" data-view="collections">Ver cobros <span aria-hidden="true">→</span></button>
               </article>
-              <article class="summary-card">
+              <article class="summary-card" id="home-portfolio-card">
                 <div class="summary-card-top">
                   <span class="summary-icon icon-warm" aria-hidden="true">＋</span>
                   <span class="summary-label">Préstamos en cartera</span>
@@ -155,7 +155,7 @@
               </article>
             </div>
 
-            <section class="section-card">
+            <section class="section-card" id="home-loans-section">
               <div class="section-heading">
                 <div>
                   <h2>Préstamos de cartera</h2>
@@ -169,6 +169,22 @@
                 <h3>Tu cartera empieza aquí</h3>
                 <p>Crea un préstamo para controlar sus cobros y saldo.</p>
                 <button class="button button-primary" type="button" data-view="new-loan">Crear préstamo</button>
+              </div>
+            </section>
+
+            <section class="section-card" id="home-collections-section" hidden>
+              <div class="section-heading">
+                <div>
+                  <h2>Cobros del día</h2>
+                  <p class="muted">Cuotas pendientes de tu ruta para hoy.</p>
+                </div>
+                <span class="count-pill" id="home-collection-pill">0 pendientes</span>
+              </div>
+              <div class="loan-list" id="home-collection-list"></div>
+              <div class="empty-state" id="home-collections-empty" hidden>
+                <span class="empty-icon empty-success" aria-hidden="true">✓</span>
+                <h3>Todo al día</h3>
+                <p>No hay cobros pendientes para registrar por ahora.</p>
               </div>
             </section>
           </section>
@@ -280,7 +296,7 @@
               <div class="ledger-table-wrap"><table class="ledger-table"><thead><tr><th>COBRADOR</th><th>DINERO INICIAL</th><th>RECOGIDO</th><th>GASTOS</th><th>CAPITAL PRESTADO</th><th>PAPELERÍA</th><th>SALDO ESPERADO</th></tr></thead><tbody id="cash-summary-rows"></tbody></table></div>
             </section>
             <div class="cashflow-forms">
-              <section class="section-card">
+              <section class="section-card" id="cash-opening-section">
                 <h2>Registrar dinero inicial</h2>
                 <form class="stack" id="cash-opening-form">
                   <div class="field"><label for="cash-opening-date">Fecha</label><input id="cash-opening-date" name="date" type="date" required></div>
@@ -414,7 +430,7 @@
       <nav class="mobile-nav" aria-label="Navegación móvil">
         <button class="mobile-nav-button is-active" type="button" data-view="home"><span aria-hidden="true">▦</span><span>Inicio</span></button>
         <button class="mobile-nav-button" type="button" data-view="collections"><span aria-hidden="true">↗</span><span>Cobros</span></button>
-        <button class="mobile-add-button" type="button" data-view="new-loan" aria-label="Nuevo préstamo"><span aria-hidden="true">＋</span></button>
+        <button class="mobile-add-button" id="mobile-add-button" type="button" data-view="new-loan" aria-label="Nuevo préstamo"><span aria-hidden="true">＋</span></button>
         <button class="mobile-nav-button" type="button" id="mobile-cashflow-nav" data-view="cashflow"><span aria-hidden="true">$</span><span>Caja</span></button>
         <button class="mobile-nav-button" type="button" id="mobile-customer-nav" data-view="customer-summary"><span aria-hidden="true">♙</span><span>Clientes</span></button>
         <button class="mobile-nav-button" type="button" id="mobile-employee-requests-nav" data-view="employee-requests" hidden><span aria-hidden="true">✓</span><span>Solicitudes</span></button>

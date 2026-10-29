@@ -242,14 +242,26 @@
     document.getElementById("sidebar-avatar").textContent = initials(displayName);
     document.getElementById("topbar-avatar").textContent = initials(displayName);
     const isOwner = state.role === "owner";
+    const isEmployee = state.role === "employee";
     document.getElementById("business-code-panel").hidden = !isOwner;
     document.getElementById("business-join-code").textContent = membership.tenant_join_code || "—";
     document.getElementById("ledger-nav").hidden = !isOwner;
     document.getElementById("mobile-ledger-nav").hidden = !isOwner;
-    document.getElementById("mobile-cashflow-nav").hidden = false;
-    document.getElementById("mobile-customer-nav").hidden = false;
     document.getElementById("employee-requests-nav").hidden = !isOwner;
     document.getElementById("mobile-employee-requests-nav").hidden = !isOwner;
+
+    // Solo cobros del dia, saldo por cobrar y gastos para el cobrador
+    document.getElementById("customer-summary-nav").hidden = isEmployee;
+    document.getElementById("mobile-customer-nav").hidden = isEmployee;
+    document.getElementById("new-loan-nav").hidden = isEmployee;
+    document.getElementById("mobile-add-button").hidden = isEmployee;
+    document.getElementById("desktop-new-button").hidden = isEmployee;
+    document.getElementById("home-portfolio-card").hidden = isEmployee;
+    document.getElementById("home-loans-section").hidden = isEmployee;
+    document.getElementById("home-collections-section").hidden = !isEmployee;
+    document.getElementById("cash-opening-section").hidden = isEmployee;
+    document.getElementById("expense-collector-field").hidden = isEmployee;
+    document.getElementById("mobile-cashflow-nav").hidden = false;
     document.getElementById("today-label").textContent = new Intl.DateTimeFormat("es", {
       weekday: "long",
       day: "numeric",
@@ -266,7 +278,7 @@
     clearMessages();
     await loadDashboard();
     if ((rank[state.role] || 0) >= rank.manager) await loadEmployees();
-    if ((rank[state.role] || 0) >= rank.admin) startPaymentStream();
+    if ((rank[state.role] || 0) >= rank.employee) startPaymentStream();
     showView(state.view);
   }
 
@@ -364,30 +376,44 @@
   }
 
   function renderCollections() {
-    elements.collections.replaceChildren();
-    document.getElementById("collections-empty").hidden = state.collections.length > 0;
-    state.collections.forEach((installment) => {
-      const row = document.createElement("article");
-      row.className = "loan-row";
-      const name = installment.customer_name || "Cliente";
-      const pending = installment.pending_amount ??
-        (Number(installment.amount_due || 0) - Number(installment.amount_paid || 0));
-      const overdue = Boolean(installment.is_overdue);
-      const collectionType = installment.is_open_ended
-        ? `Cuota ${escapeHtml(installment.number)} · ${escapeHtml(labels[installment.frequency] || installment.frequency)}`
-        : `Cuota ${escapeHtml(installment.number)}`;
-      row.innerHTML =
-        `<div class="loan-person"><span class="customer-avatar">${escapeHtml(initials(name))}</span>` +
-        `<div><strong>${escapeHtml(name)}</strong><span>${collectionType} · ` +
-        `${escapeHtml(installment.due_date)}</span></div></div>` +
-        `<div class="loan-detail"><strong>${money(pending)}</strong><span>Saldo de cuota</span></div>` +
-        `<div class="loan-detail"><strong>${money(installment.amount_due)}</strong><span>Cuota completa</span></div>` +
-        `<button class="loan-action" type="button" data-payment-loan="${escapeHtml(installment.loan)}" ` +
-        `data-payment-name="${escapeHtml(name)}" data-payment-suggested="${escapeHtml(pending)}">Cobrar</button>` +
-        `<span class="status-pill ${overdue ? "status-delinquent" : "status-active"}">` +
-        `${overdue ? "Vencida" : "Pendiente"}</span>`;
-      elements.collections.append(row);
+    const targets = [
+      { list: elements.collections, empty: document.getElementById("collections-empty") },
+    ];
+    const homeList = document.getElementById("home-collection-list");
+    const homeEmpty = document.getElementById("home-collections-empty");
+    if (homeList && homeEmpty) {
+      targets.push({ list: homeList, empty: homeEmpty });
+    }
+    targets.forEach(({ list, empty }) => {
+      list.replaceChildren();
+      empty.hidden = state.collections.length > 0;
+      state.collections.forEach((installment) => {
+        const row = document.createElement("article");
+        row.className = "loan-row";
+        const name = installment.customer_name || "Cliente";
+        const pending = installment.pending_amount ??
+          (Number(installment.amount_due || 0) - Number(installment.amount_paid || 0));
+        const overdue = Boolean(installment.is_overdue);
+        const collectionType = installment.is_open_ended
+          ? `Cuota ${escapeHtml(installment.number)} · ${escapeHtml(labels[installment.frequency] || installment.frequency)}`
+          : `Cuota ${escapeHtml(installment.number)}`;
+        row.innerHTML =
+          `<div class="loan-person"><span class="customer-avatar">${escapeHtml(initials(name))}</span>` +
+          `<div><strong>${escapeHtml(name)}</strong><span>${collectionType} · ` +
+          `${escapeHtml(installment.due_date)}</span></div></div>` +
+          `<div class="loan-detail"><strong>${money(pending)}</strong><span>Saldo de cuota</span></div>` +
+          `<div class="loan-detail"><strong>${money(installment.amount_due)}</strong><span>Cuota completa</span></div>` +
+          `<button class="loan-action" type="button" data-payment-loan="${escapeHtml(installment.loan)}" ` +
+          `data-payment-name="${escapeHtml(name)}" data-payment-suggested="${escapeHtml(pending)}">Cobrar</button>` +
+          `<span class="status-pill ${overdue ? "status-delinquent" : "status-active"}">` +
+          `${overdue ? "Vencida" : "Pendiente"}</span>`;
+        list.append(row);
+      });
     });
+    const homePill = document.getElementById("home-collection-pill");
+    if (homePill) {
+      homePill.textContent = `${state.collections.length} ${state.collections.length === 1 ? "pendiente" : "pendientes"}`;
+    }
   }
 
 
@@ -531,13 +557,18 @@
   }
 
   function showView(view) {
-    if ((view === "ledger" || view === "employee-requests") && state.role !== "owner") view = "home";
+    if (state.role === "employee" && ["ledger", "employee-requests", "customer-summary", "new-loan"].includes(view)) {
+      view = "home";
+    } else if ((view === "ledger" || view === "employee-requests") && state.role !== "owner") {
+      view = "home";
+    }
     state.view = view;
+    const isEmployee = state.role === "employee";
     const titles = {
-      home: ["Resumen", "Una mirada clara a tus préstamos."],
+      home: ["Resumen", isEmployee ? "Saldo por cobrar y cobros asignados del día." : "Una mirada clara a tus préstamos."],
       collections: ["Cobros de hoy", "Cuotas pendientes de tu cartera."],
       ledger: ["Libro de cartera", "Consulta el formato del Excel por período y frecuencia."],
-      cashflow: ["Caja y gastos", "Controla el dinero inicial, los cobros, los préstamos y los gastos."],
+      cashflow: ["Caja y gastos", isEmployee ? "Registra tus gastos diarios y consulta tu balance de caja." : "Controla el dinero inicial, los cobros, los préstamos y los gastos."],
       "customer-summary": ["Resumen por cliente", "Consulta la cartera consolidada y el detalle de amortización."],
       "employee-requests": ["Solicitudes de empleados", "Aprueba o rechaza las solicitudes de acceso al negocio."],
       "new-loan": ["Nuevo préstamo", "Registra un cliente y define su frecuencia de cobro."],
@@ -848,11 +879,16 @@
       if (line.startsWith("event:")) eventName = line.slice(6).trim();
       if (line.startsWith("data:")) data += line.slice(5).trim();
     });
-    if (eventName !== "loan.payment_received" || !data) return;
+    if (!["loan.payment_received", "loan.payment_reversed"].includes(eventName) || !data) return;
     const event = JSON.parse(data);
     const payload = event.payload || {};
-    showToast(`Nuevo cobro recibido: ${money(payload.amount)}.`);
+    if (eventName === "loan.payment_received") {
+      showToast(`Nuevo cobro recibido: ${money(payload.amount)}.`);
+    } else {
+      showToast(`Cobro reversado: ${money(payload.amount)}.`);
+    }
     loadDashboard();
+    if (state.view === "cashflow") loadCashSummary();
   }
 
   function showToast(message) {

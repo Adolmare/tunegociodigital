@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 from asgiref.sync import async_to_sync, sync_to_async
 from decimal import Decimal
 from datetime import date, timedelta
@@ -486,7 +486,8 @@ def test_owner_and_admin_receive_live_payment_events(
 
     stream_url = reverse("loan-payment-events-stream")
     employee_client = client_for(employee_user, tenant)
-    assert employee_client.get(stream_url).status_code == status.HTTP_403_FORBIDDEN
+    assert employee_client.get(stream_url).status_code == status.HTTP_200_OK
+    assert client_for(two_tenants["user_b"], tenant).get(stream_url).status_code == status.HTTP_404_NOT_FOUND
 
     def make_stream_response(user):
         request = APIRequestFactory().get(
