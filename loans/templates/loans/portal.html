@@ -204,9 +204,9 @@
                 <div class="field">
                   <label for="ledger-period">Ver por período</label>
                   <select id="ledger-period" name="period">
-                    <option value="day">Diario</option>
-                    <option value="fortnight">Quincenal</option>
+                    <option value="day" selected>Diario</option>
                     <option value="week">Semanal</option>
+                    <option value="fortnight">Quincenal</option>
                     <option value="month">Mensual</option>
                     <option value="year">Anual</option>
                   </select>
@@ -218,11 +218,11 @@
                 <div class="field">
                   <label for="ledger-frequency">Concepto</label>
                   <select id="ledger-frequency" name="frequency">
-                    <option value="all">Todos</option>
-                    <option value="daily">Diario</option>
+                    <option value="daily" selected>Diario</option>
                     <option value="weekly">Semanal</option>
                     <option value="biweekly">Quincenal</option>
                     <option value="monthly">Mensual</option>
+                    <option value="all">Todos</option>
                   </select>
                 </div>
                 <button class="button button-primary" type="submit" id="ledger-search">Consultar</button>
@@ -233,7 +233,7 @@
                   <thead>
                     <tr>
                       <th>ITEM</th>
-                      <th>FECHAA DE INICIO</th>
+                      <th>FECHA DE INICIO</th>
                       <th>DIA</th>
                       <th>CLIENTES</th>
                       <th>ZONA</th>

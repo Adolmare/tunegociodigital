@@ -257,6 +257,8 @@
     }).format(new Date()).toUpperCase();
     const today = new Date();
     document.getElementById("start-date").value = localDateValue(today);
+    document.getElementById("ledger-period").value = "day";
+    document.getElementById("ledger-frequency").value = "daily";
     document.getElementById("ledger-date").value = localDateValue(today);
     ["cash-date", "cash-opening-date", "expense-date"].forEach((id) => {
       document.getElementById(id).value = localDateValue(today);
@@ -981,6 +983,43 @@
     } finally {
       setBusy(button, false);
     }
+  });
+
+  const periodToFrequency = {
+    day: "daily",
+    week: "weekly",
+    fortnight: "biweekly",
+    month: "monthly",
+    year: "all",
+  };
+
+  const frequencyToPeriod = {
+    daily: "day",
+    weekly: "week",
+    biweekly: "fortnight",
+    monthly: "month",
+  };
+
+  document.getElementById("ledger-period").addEventListener("change", (event) => {
+    const period = event.target.value;
+    const freqSelect = document.getElementById("ledger-frequency");
+    if (periodToFrequency[period]) {
+      freqSelect.value = periodToFrequency[period];
+    }
+    loadLedger();
+  });
+
+  document.getElementById("ledger-frequency").addEventListener("change", (event) => {
+    const frequency = event.target.value;
+    const periodSelect = document.getElementById("ledger-period");
+    if (frequency !== "all" && frequencyToPeriod[frequency]) {
+      periodSelect.value = frequencyToPeriod[frequency];
+    }
+    loadLedger();
+  });
+
+  document.getElementById("ledger-date").addEventListener("change", () => {
+    loadLedger();
   });
 
   document.getElementById("ledger-filters").addEventListener("submit", (event) => {

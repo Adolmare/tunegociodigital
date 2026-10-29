@@ -127,7 +127,16 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
         filters.is_valid(raise_exception=True)
         period = filters.validated_data["period"]
         selected_date = filters.validated_data["date"]
-        frequency = filters.validated_data["frequency"]
+        raw_frequency = request.query_params.get("frequency")
+        frequency = filters.validated_data.get("frequency")
+        period_to_frequency = {
+            "day": "daily",
+            "week": "weekly",
+            "fortnight": "biweekly",
+            "month": "monthly",
+        }
+        if (not raw_frequency or raw_frequency == "auto") and period in period_to_frequency:
+            frequency = period_to_frequency[period]
         period_start, period_end = ledger_period_dates(period, selected_date)
 
         loans = list(Loan.objects.select_related("customer"))

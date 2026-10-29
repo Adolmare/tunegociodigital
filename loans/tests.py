@@ -106,6 +106,35 @@ def test_owner_ledger_reports_period_payments_and_is_owner_only(
     manager_response = client_for(manager, tenant).get(reverse("loan-ledger"))
     assert manager_response.status_code == status.HTTP_403_FORBIDDEN
 
+    # Filtro automático por concepto según período cuando no se especifica frecuencia
+    day_response = client_for(owner, tenant).get(
+        reverse("loan-ledger"),
+        {"period": "day", "date": timezone.localdate().isoformat()},
+    )
+    assert day_response.status_code == status.HTTP_200_OK
+    assert len(day_response.data["rows"]) == 1
+    assert day_response.data["rows"][0]["concept"] == "DIARIO"
+
+    # Si se pide período semanal sin frecuencia, no debe incluir préstamos diarios
+    week_response = client_for(owner, tenant).get(
+        reverse("loan-ledger"),
+        {"period": "week", "date": timezone.localdate().isoformat()},
+    )
+    assert week_response.status_code == status.HTTP_200_OK
+    assert len(week_response.data["rows"]) == 0
+
+    # Pero si se especifica explícitamente frequency=all, sí se incluyen todos
+    all_response = client_for(owner, tenant).get(
+        reverse("loan-ledger"),
+        {
+            "period": "week",
+            "date": timezone.localdate().isoformat(),
+            "frequency": "all",
+        },
+    )
+    assert all_response.status_code == status.HTTP_200_OK
+    assert len(all_response.data["rows"]) == 1
+
 
 def _make_employee_and_customer(two_tenants, rls_context, tenant_key="tenant_a"):
     tenant = two_tenants[tenant_key]
