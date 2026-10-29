@@ -10,8 +10,9 @@ from accounts.models import User
 from accounts.serializers import MyMembershipSerializer
 from employees.models import Employee
 from loans.models import CollectorDailyCash
-from tenants.models import Membership
+from tenants.models import Membership, Tool
 from tenants.serializers import TenantSerializer
+from tenants.services import enable_tool
 
 
 @pytest.mark.django_db
@@ -62,6 +63,7 @@ def test_daily_cash_update_duplicate_returns_validation_error(
     tenant = two_tenants["tenant_a"]
     owner = two_tenants["user_a"]
     rls_context(owner, tenant)
+    enable_tool(tenant, Tool.objects.get(code="loans"))
 
     collector_user = User.objects.create(email="cash-update-collector@example.test")
     Membership.objects.create(

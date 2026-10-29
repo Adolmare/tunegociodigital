@@ -8,11 +8,12 @@ from django.db import migrations, models
 
 def populate_join_codes(apps, schema_editor):
     Tenant = apps.get_model("tenants", "Tenant")
-    for tenant in Tenant.objects.filter(join_code__isnull=True).iterator():
+    db_alias = schema_editor.connection.alias
+    for tenant in Tenant.objects.using(db_alias).filter(join_code__isnull=True).iterator():
         code = uuid.uuid4().hex[:10].upper()
-        while Tenant.objects.filter(join_code=code).exists():
+        while Tenant.objects.using(db_alias).filter(join_code=code).exists():
             code = uuid.uuid4().hex[:10].upper()
-        Tenant.objects.filter(pk=tenant.pk).update(join_code=code)
+        Tenant.objects.using(db_alias).filter(pk=tenant.pk).update(join_code=code)
 
 
 class Migration(migrations.Migration):
