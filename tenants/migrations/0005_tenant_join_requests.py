@@ -18,7 +18,7 @@ def populate_join_codes(apps, schema_editor):
 class Migration(migrations.Migration):
     dependencies = [
         ("accounts", "0001_initial"),
-        ("tenants", "0002_tenantapikey"),
+        ("tenants", "0004_tenant_currency_default_cop"),
     ]
 
     operations = [

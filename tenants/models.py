@@ -88,3 +88,7 @@ class TenantJoinRequest(models.Model):
                 name="uniq_pending_tenant_join_request",
             ),
         ]
+
+
+# Alias for compatibility with EmployeeJoinRequest
+EmployeeJoinRequest = TenantJoinRequest

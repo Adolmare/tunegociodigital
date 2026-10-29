@@ -453,3 +453,6 @@ class RouteStopViewSet(ActionMinRoleMixin, TenantViewSet):
         if self.request.membership.role == "employee":
             queryset = queryset.filter(route__collector__user=self.request.user)
         return queryset
+
+
+from .cashflow import CollectorDailyCashViewSet as CollectorDailyCloseViewSet

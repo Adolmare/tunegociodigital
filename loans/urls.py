@@ -23,6 +23,7 @@ router.register(r"loan-installments", LoanInstallmentViewSet, basename="loan-ins
 router.register(r"collection-routes", CollectionRouteViewSet, basename="collection-route")
 router.register(r"route-stops", RouteStopViewSet, basename="route-stop")
 router.register(r"collector-daily-cash", CollectorDailyCashViewSet, basename="collector-daily-cash")
+router.register(r"collector-daily-closes", CollectorDailyCashViewSet, basename="collector-daily-close")
 router.register(r"collector-expenses", CollectorExpenseViewSet, basename="collector-expense")
 
 urlpatterns = [

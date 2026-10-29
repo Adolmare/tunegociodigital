@@ -2,8 +2,10 @@ from django.db import connection
 from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
+from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
+from tenants.join_requests import TenantJoinRequestCreateAPIView
 from tenants.models import Membership
 
 from .serializers import MeSerializer, MyMembershipSerializer, RegisterSerializer
@@ -48,3 +50,10 @@ class MyTenantsAPIView(generics.GenericAPIView):
             .order_by("created_at")
         )
         return Response(self.get_serializer(memberships, many=True).data)
+
+
+class JoinBusinessAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        return TenantJoinRequestCreateAPIView().post(request)

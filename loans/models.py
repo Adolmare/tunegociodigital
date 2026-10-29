@@ -271,3 +271,7 @@ class CollectorExpense(TenantOwnedModel):
                 name="collector_expense_amount_positive",
             ),
         ]
+
+
+# Alias for compatibility with earlier naming
+CollectorDailyClose = CollectorDailyCash

@@ -7,7 +7,8 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("loans", "0001_initial"),
+        ("employees", "0001_initial"),
+        ("loans", "0007_backfill_open_ended_quotas"),
     ]
 
     operations = [

@@ -20,16 +20,27 @@ class TenantJoinRequestCreateAPIView(APIView):
 
     def post(self, request):
         code = str(request.data.get("join_code", "")).strip().upper()
-        if not code:
-            raise ValidationError({"join_code": "Introduce el código del negocio."})
+        business_id = request.data.get("business_id")
+        if not code and not business_id:
+            raise ValidationError({"join_code": "Introduce el código o ID del negocio."})
 
         with transaction.atomic():
-            tenant = Tenant.objects.filter(
-                join_code=code,
-                status__in=[Tenant.Status.TRIAL, Tenant.Status.ACTIVE],
-            ).first()
+            if code:
+                tenant = Tenant.objects.filter(
+                    join_code=code,
+                    status__in=[Tenant.Status.TRIAL, Tenant.Status.ACTIVE],
+                ).first()
+            else:
+                try:
+                    tenant = Tenant.objects.filter(
+                        pk=business_id,
+                        status__in=[Tenant.Status.TRIAL, Tenant.Status.ACTIVE],
+                    ).first()
+                except (ValueError, TypeError):
+                    tenant = None
+
             if tenant is None:
-                raise NotFound("El código del negocio no existe o no está disponible.")
+                raise NotFound("El negocio o código indicado no existe o no está disponible.")
 
             set_database_context(request.user.pk, tenant.pk)
             existing_membership = Membership.objects.filter(
@@ -53,6 +64,7 @@ class TenantJoinRequestCreateAPIView(APIView):
                     "tenant_id": str(tenant.pk),
                     "tenant_name": tenant.name,
                     "status": join_request.status,
+                    "created": True,
                     "created_at": join_request.created_at,
                 },
                 status=status.HTTP_201_CREATED,
