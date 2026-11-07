@@ -50,23 +50,10 @@ r2_account_id = env.str("R2_ACCOUNT_ID", default="")
 r2_access_key_id = env.str("R2_ACCESS_KEY_ID", default="")
 r2_secret_access_key = env.str("R2_SECRET_ACCESS_KEY", default="")
 r2_bucket_name = env.str("R2_BUCKET_NAME", default="")
-r2_configuration = {
-    "R2_ACCOUNT_ID": r2_account_id,
-    "R2_ACCESS_KEY_ID": r2_access_key_id,
-    "R2_SECRET_ACCESS_KEY": r2_secret_access_key,
-    "R2_BUCKET_NAME": r2_bucket_name,
-}
-missing_r2_settings = [
-    setting for setting, value in r2_configuration.items() if not value
-]
-if missing_r2_settings:
-    raise ImproperlyConfigured(
-        "Configura las variables requeridas para Cloudflare R2: "
-        + ", ".join(missing_r2_settings)
-    )
+has_r2 = bool(r2_account_id and r2_access_key_id and r2_secret_access_key and r2_bucket_name)
 
-STORAGES = {
-    "default": {
+if has_r2:
+    default_storage = {
         "BACKEND": "storages.backends.s3.S3Storage",
         "OPTIONS": {
             "access_key": r2_access_key_id,
@@ -79,7 +66,14 @@ STORAGES = {
             "querystring_auth": True,
             "file_overwrite": False,
         },
-    },
+    }
+else:
+    default_storage = {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    }
+
+STORAGES = {
+    "default": default_storage,
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },

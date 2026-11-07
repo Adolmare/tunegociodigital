@@ -20,14 +20,6 @@ services:
         sync: false
       - key: APP_DB_PASSWORD
         sync: false
-      - key: R2_ACCOUNT_ID
-        sync: false
-      - key: R2_ACCESS_KEY_ID
-        sync: false
-      - key: R2_SECRET_ACCESS_KEY
-        sync: false
-      - key: R2_BUCKET_NAME
-        sync: false
       - key: CSRF_TRUSTED_ORIGINS
         sync: false
       - key: CORS_ALLOWED_ORIGINS
