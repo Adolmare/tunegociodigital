@@ -7,8 +7,13 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
+<<<<<<< HEAD
 from tenants.api import set_database_context
 from tenants.models import EmployeeJoinRequest, Membership, Tenant
+=======
+from tenants.join_requests import TenantJoinRequestCreateAPIView
+from tenants.models import Membership
+>>>>>>> feat/loans-cashflow-collector-dashboard
 
 from .serializers import MeSerializer, MyMembershipSerializer, RegisterSerializer
 
@@ -57,6 +62,7 @@ class MyTenantsAPIView(generics.GenericAPIView):
 class JoinBusinessAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
+<<<<<<< HEAD
     @transaction.atomic
     def post(self, request):
         business_id = request.data.get("business_id")
@@ -84,3 +90,7 @@ class JoinBusinessAPIView(APIView):
             },
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
+=======
+    def post(self, request, *args, **kwargs):
+        return TenantJoinRequestCreateAPIView().post(request)
+>>>>>>> feat/loans-cashflow-collector-dashboard

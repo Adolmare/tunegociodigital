@@ -282,3 +282,96 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
 }
+
+
+/* Cash-flow and customer profile views */
+.cashflow-forms {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+.cashflow-forms .section-card { min-width: 0; }
+.cashflow-forms h2 { margin: 0 0 16px; font-size: 17px; }
+.cashflow-forms .stack { display: grid; gap: 13px; }
+.cashflow-forms .field { display: grid; gap: 7px; }
+.cashflow-forms .field input,
+.cashflow-forms .field select,
+.cashflow-forms .field textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid var(--line, #e0e7e1);
+  border-radius: 10px;
+  background: white;
+  color: var(--ink, #17251d);
+  font: inherit;
+}
+.cash-summary-grid { margin-top: 16px; }
+.cash-summary-grid .summary-card { min-width: 0; }
+.amortization-details { min-width: 150px; }
+.amortization-details summary {
+  cursor: pointer;
+  color: var(--green, #174d39);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.amortization-loan {
+  min-width: 300px;
+  padding: 14px 0;
+  border-bottom: 1px solid #e8ede8;
+}
+.amortization-loan h4 { margin: 0 0 7px; font-size: 13px; }
+.amortization-loan p { margin: 0 0 10px; color: #69766d; font-size: 12px; line-height: 1.5; }
+.amortization-loan .ledger-table { min-width: 650px; }
+#customer-summary-rows > tr > td { vertical-align: top; }
+#customer-summary-totals th,
+#customer-summary-totals td { background: #f2f6f2; font-weight: 800; }
+#auth-status, #tenant-status { margin-top: 12px; }
+#register-form[hidden], #login-form[hidden] { display: none; }
+
+@media (max-width: 680px) {
+  .cashflow-forms { grid-template-columns: 1fr; gap: 12px; }
+  .cashflow-forms h2 { font-size: 14px; }
+  .cash-summary-grid { grid-template-columns: 1fr 1fr; }
+  .cash-summary-grid .summary-card { min-height: 98px; }
+  .cash-summary-grid .summary-value { font-size: 18px; overflow-wrap: anywhere; }
+  .mobile-nav-button { min-width: 42px; font-size: 8px; }
+  .mobile-nav-button > span:first-child { font-size: 15px; }
+  .amortization-loan { min-width: 260px; }
+  .amortization-loan h4 { font-size: 11px; }
+  .amortization-loan p { font-size: 10px; }
+}
+
+.employee-request-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.employee-request-actions .button { min-height: 36px; padding: 0 13px; }
+@media (max-width: 680px) {
+  .mobile-nav { justify-content: flex-start; gap: 7px; overflow-x: auto; }
+  .mobile-nav-button { flex: 0 0 42px; }
+  .mobile-add-button { flex: 0 0 46px; }
+  .employee-request-row { grid-template-columns: minmax(0, 1fr); }
+  .employee-request-actions { grid-column: 1 / -1; }
+  .employee-request-actions .button { flex: 1; }
+}
+
+.business-code {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: -8px 0 18px;
+  padding: 14px 17px;
+  border: 1px solid #dfe9e1;
+  border-radius: 14px;
+  background: linear-gradient(110deg, #f2f8f3, #ffffff);
+}
+.business-code > div { display: grid; gap: 4px; }
+.business-code strong { font-size: 21px; letter-spacing: .12em; color: var(--green, #174d39); }
+.business-code .muted { font-size: 11px; }
+.business-code .eyebrow { margin: 0; }
+@media (max-width: 680px) {
+  .business-code { align-items: flex-start; padding: 12px; gap: 8px; }
+  .business-code strong { font-size: 18px; }
+  .business-code .muted { max-width: 220px; line-height: 1.4; }
+  .business-code .button { flex: 0 0 auto; min-height: 34px; padding: 0 9px; font-size: 10px; }
+}

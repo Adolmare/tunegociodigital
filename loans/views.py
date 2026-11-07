@@ -63,11 +63,11 @@ def _read_payment_events(user_id, tenant_id, cursor):
         return list(
             EventInbox.unscoped.filter(
                 tenant_id=tenant_id,
-                event_name="loan.payment_received",
+                event_name__in=["loan.payment_received", "loan.payment_reversed"],
                 occurred_at__gte=cursor,
             )
             .order_by("occurred_at", "id")
-            .values("id", "occurred_at", "payload")[:100]
+            .values("id", "occurred_at", "event_name", "payload")[:100]
         )
 
 
@@ -90,7 +90,8 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
     def get_queryset(self):
         queryset = Loan.objects.all()
         if self.request.membership.role == "employee":
-            queryset = queryset.filter(collector__user=self.request.user)
+            assigned = queryset.filter(collector__user=self.request.user)
+            queryset = assigned if assigned.exists() else queryset.filter(collector__isnull=True)
         return queryset
 
     def perform_create(self, serializer):
@@ -209,7 +210,16 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
         filters.is_valid(raise_exception=True)
         period = filters.validated_data["period"]
         selected_date = filters.validated_data["date"]
-        frequency = filters.validated_data["frequency"]
+        raw_frequency = request.query_params.get("frequency")
+        frequency = filters.validated_data.get("frequency")
+        period_to_frequency = {
+            "day": "daily",
+            "week": "weekly",
+            "fortnight": "biweekly",
+            "month": "monthly",
+        }
+        if (not raw_frequency or raw_frequency == "auto") and period in period_to_frequency:
+            frequency = period_to_frequency[period]
         period_start, period_end = ledger_period_dates(period, selected_date)
 
         loans = list(Loan.objects.select_related("customer"))
@@ -415,7 +425,7 @@ class LoanPaymentViewSet(ActionMinRoleMixin, TenantViewSet):
 class LoanPaymentEventStreamView(TenantContextMixin, APIView):
     permission_classes = [IsAuthenticated, HasTool, HasRole]
     required_tool = "loans"
-    min_role = "admin"
+    min_role = "employee"
     http_method_names = ["get", "options"]
 
     def get(self, request):
@@ -469,9 +479,10 @@ class LoanPaymentEventStreamView(TenantContextMixin, APIView):
                         "payload": event["payload"],
                     }
                     event_id = f"{occurred_at.isoformat()}|{event['id']}"
+                    event_type = event.get("event_name", "loan.payment_received")
                     yield (
                         f"id: {event_id}\n"
-                        "event: loan.payment_received\n"
+                        f"event: {event_type}\n"
                         f"data: {json.dumps(data, separators=(',', ':'))}\n\n"
                     )
 
@@ -537,6 +548,7 @@ class RouteStopViewSet(ActionMinRoleMixin, TenantViewSet):
         return queryset
 
 
+<<<<<<< HEAD
 class CollectorDailyCloseViewSet(ActionMinRoleMixin, TenantViewSet):
     required_tool = "loans"
     min_role = "manager"
@@ -627,3 +639,6 @@ class CollectorExpenseViewSet(ActionMinRoleMixin, TenantViewSet):
         if requested is None or requested.tenant_id != self.request.tenant.pk:
             raise ValidationError({"collector": "Selecciona un cobrador activo del negocio."})
         return requested
+=======
+from .cashflow import CollectorDailyCashViewSet as CollectorDailyCloseViewSet
+>>>>>>> feat/loans-cashflow-collector-dashboard
