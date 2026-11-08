@@ -55,18 +55,23 @@ class LoanCustomerInputSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Customer
-        fields = ("full_name", "document_id", "neighborhood", "location")
+        fields = ("full_name", "document_id", "phone", "neighborhood", "location")
         extra_kwargs = {
             "full_name": {"required": True},
             "document_id": {"required": True, "allow_blank": False},
+            "phone": {"required": False, "allow_blank": True},
             "neighborhood": {"required": True, "allow_blank": False},
         }
 
 
 class LoanInstallmentSerializer(serializers.ModelSerializer):
     customer_name = serializers.CharField(source="loan.customer.full_name", read_only=True)
+    customer_phone = serializers.CharField(source="loan.customer.phone", read_only=True)
     document_id = serializers.CharField(source="loan.customer.document_id", read_only=True)
     neighborhood = serializers.CharField(source="loan.customer.neighborhood", read_only=True)
+    loan_balance = serializers.DecimalField(
+        source="loan.balance", max_digits=14, decimal_places=2, read_only=True
+    )
     is_open_ended = serializers.BooleanField(source="loan.is_open_ended", read_only=True)
     frequency = serializers.CharField(source="loan.frequency", read_only=True)
     location = GeometryField(source="loan.customer.location", read_only=True)
@@ -109,7 +114,9 @@ class LoanSerializer(serializers.ModelSerializer):
     customer = TenantScopedRelatedField(required=False, allow_null=True)
     customer_details = LoanCustomerInputSerializer(write_only=True, required=False)
     collector = TenantScopedRelatedField(required=False, allow_null=True)
+    collector_name = serializers.CharField(source="collector.full_name", read_only=True, default="")
     customer_name = serializers.CharField(source="customer.full_name", read_only=True)
+    customer_phone = serializers.CharField(source="customer.phone", read_only=True)
     document_id = serializers.CharField(source="customer.document_id", read_only=True)
     neighborhood = serializers.CharField(source="customer.neighborhood", read_only=True)
     location = GeometryField(source="customer.location", read_only=True)

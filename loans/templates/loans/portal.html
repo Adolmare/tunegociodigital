@@ -136,7 +136,7 @@
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
             <span>Resumen</span>
           </button>
-          <button class="nav-button" type="button" data-view="collections">
+          <button class="nav-button" id="collections-nav" type="button" data-view="collections">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
             <span>Cobros de hoy</span>
           </button>
@@ -203,16 +203,23 @@
 
           <div class="business-code" id="business-code-panel" hidden>
             <div class="business-code-info">
-              <span class="eyebrow">CÓDIGO DE INVITACIÓN PARA COBRADORES</span>
+              <span class="eyebrow">CÓDIGO DE INVITACIÓN Y EQUIPO</span>
               <div class="business-code-row">
                 <strong id="business-join-code">—</strong>
-                <span class="muted">Comparte este código con tu equipo. Cada acceso requiere tu aprobación.</span>
+                <span class="muted">Comparte este código con tus cobradores. Aprueba sus solicitudes aquí mismo.</span>
               </div>
             </div>
-            <button class="button button-outline" id="copy-join-code" type="button">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-              <span>Copiar código</span>
-            </button>
+            <div class="business-code-actions">
+              <button class="button button-outline" id="copy-join-code" type="button">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Copiar código</span>
+              </button>
+              <button class="button button-quiet" id="open-employee-requests-btn" type="button" data-view="employee-requests">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="m16 11 2 2 4-4"/></svg>
+                <span>Solicitudes</span>
+                <span class="count-pill" id="employee-requests-badge" hidden>0</span>
+              </button>
+            </div>
           </div>
 
           <div class="notice" id="notice" role="status" aria-live="polite" hidden></div>
@@ -241,7 +248,7 @@
                   <span class="summary-label">Cobros para hoy</span>
                 </div>
                 <strong class="summary-value" id="today-count">0</strong>
-                <button class="inline-link" type="button" data-view="collections">
+                <button class="inline-link" id="home-goto-collections" type="button" data-view="collections">
                   <span>Ir a ruta de cobro</span>
                   <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
                 </button>
@@ -290,10 +297,16 @@
             <section class="section-card" id="home-collections-section" hidden>
               <div class="section-heading">
                 <div>
-                  <h2>Cobros del día</h2>
-                  <p class="muted">Cuotas pendientes asignadas a tu ruta de hoy.</p>
+                  <h2>Mi ruta de cobros hoy</h2>
+                  <p class="muted">Cuotas pendientes asignadas a tu ruta diaria.</p>
                 </div>
-                <span class="count-pill" id="home-collection-pill">0 pendientes</span>
+                <div class="section-actions">
+                  <div class="quick-search-wrap">
+                    <svg class="input-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    <input id="home-collection-quick-search" type="search" placeholder="Filtrar cliente en ruta…" aria-label="Filtrar mi ruta de hoy">
+                  </div>
+                  <span class="count-pill" id="home-collection-pill">0 pendientes</span>
+                </div>
               </div>
               <div class="loan-list" id="home-collection-list"></div>
               <div class="empty-state" id="home-collections-empty" hidden>
@@ -701,8 +714,14 @@
                 <span class="step-badge">01</span>
                 <div>
                   <h2>Datos del cliente</h2>
-                  <p class="muted">Identifica al titular y su zona de cobro.</p>
+                  <p class="muted">Selecciona un cliente frecuente para renovar o registra uno nuevo.</p>
                 </div>
+              </div>
+              <div class="field">
+                <label for="existing-customer-select">¿Renovar o prestar a cliente existente? (opcional)</label>
+                <select id="existing-customer-select">
+                  <option value="">＋ Nuevo cliente (ingresar datos manualmente)</option>
+                </select>
               </div>
               <div class="form-grid">
                 <div class="field">
@@ -714,16 +733,22 @@
                   <input id="customer-document" name="document_id" maxlength="40" autocomplete="off" placeholder="Número de documento" required>
                 </div>
               </div>
-              <div class="field neighborhood-field">
-                <label for="customer-neighborhood">Barrio</label>
-                <select id="customer-neighborhood" name="neighborhood" required>
-                  <option value="">Selecciona un barrio</option>
-                  {% for neighborhood in neighborhoods %}
-                    <option value="{{ neighborhood }}">{{ neighborhood }}</option>
-                  {% endfor %}
-                  <option value="__other__">Otro barrio</option>
-                </select>
-                <input id="customer-other-neighborhood" type="text" maxlength="120" placeholder="Escribe el nombre del barrio" aria-label="Otro barrio" hidden>
+              <div class="form-grid">
+                <div class="field">
+                  <label for="customer-phone">Teléfono / WhatsApp (opcional)</label>
+                  <input id="customer-phone" name="phone" type="tel" maxlength="40" autocomplete="tel" placeholder="Ej. 300 123 4567">
+                </div>
+                <div class="field neighborhood-field">
+                  <label for="customer-neighborhood">Barrio</label>
+                  <select id="customer-neighborhood" name="neighborhood" required>
+                    <option value="">Selecciona un barrio</option>
+                    {% for neighborhood in neighborhoods %}
+                      <option value="{{ neighborhood }}">{{ neighborhood }}</option>
+                    {% endfor %}
+                    <option value="__other__">Otro barrio</option>
+                  </select>
+                  <input id="customer-other-neighborhood" type="text" maxlength="120" placeholder="Escribe el nombre del barrio" aria-label="Otro barrio" hidden>
+                </div>
               </div>
 
               <div class="form-divider"></div>
@@ -815,7 +840,7 @@
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
           <span>Inicio</span>
         </button>
-        <button class="mobile-nav-button" type="button" data-view="collections">
+        <button class="mobile-nav-button" id="mobile-collections-nav" type="button" data-view="collections">
           <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
           <span>Cobros</span>
         </button>

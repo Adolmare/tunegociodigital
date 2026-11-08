@@ -167,6 +167,91 @@
     return `status-${String(status || "pending").toLowerCase()}`;
   }
 
+  function cleanPhoneForWhatsApp(phone) {
+    const digits = String(phone || "").replace(/\D+/g, "");
+    if (!digits || digits.length < 7) return "";
+    if (digits.length === 10 && digits.startsWith("3")) return `57${digits}`;
+    return digits;
+  }
+
+  function whatsappUrl(phone, text) {
+    const clean = cleanPhoneForWhatsApp(phone);
+    const encoded = encodeURIComponent(text || "");
+    return clean ? `https://wa.me/${clean}?text=${encoded}` : `https://api.whatsapp.com/send?text=${encoded}`;
+  }
+
+  function populateExistingCustomers() {
+    const select = document.getElementById("existing-customer-select");
+    if (!select) return;
+    const byDoc = new Map();
+    state.loans.forEach((loan) => {
+      const key = loan.document_id || loan.customer_name;
+      if (!key || byDoc.has(key)) return;
+      byDoc.set(key, {
+        full_name: loan.customer_name || "",
+        document_id: loan.document_id || "",
+        phone: loan.customer_phone || "",
+        neighborhood: loan.neighborhood || "",
+      });
+    });
+    if (state.customerSummary && Array.isArray(state.customerSummary.rows)) {
+      state.customerSummary.rows.forEach((row) => {
+        const key = row.customer_document || row.customer_name;
+        if (!key) return;
+        byDoc.set(key, {
+          full_name: row.customer_name || "",
+          document_id: row.customer_document || "",
+          phone: row.customer_phone || "",
+          neighborhood: row.customer_neighborhood || "",
+        });
+      });
+    }
+    const currentVal = select.value;
+    select.replaceChildren(new Option("＋ Nuevo cliente (ingresar datos manualmente)", ""));
+    Array.from(byDoc.values())
+      .sort((a, b) => a.full_name.localeCompare(b.full_name, "es"))
+      .forEach((customer) => {
+        const label = `${customer.full_name}${customer.document_id ? ` (${customer.document_id})` : ""}${customer.neighborhood ? ` · ${customer.neighborhood}` : ""}`;
+        const option = new Option(label, customer.document_id || customer.full_name);
+        option.dataset.fullName = customer.full_name;
+        option.dataset.documentId = customer.document_id;
+        option.dataset.phone = customer.phone;
+        option.dataset.neighborhood = customer.neighborhood;
+        select.add(option);
+      });
+    select.value = currentVal;
+  }
+
+  function prefillCustomerForm({ fullName = "", documentId = "", phone = "", neighborhood = "" }) {
+    document.getElementById("customer-name").value = fullName;
+    document.getElementById("customer-document").value = documentId;
+    const phoneInput = document.getElementById("customer-phone");
+    if (phoneInput) phoneInput.value = phone;
+    const neighborhoodSelect = document.getElementById("customer-neighborhood");
+    const otherNeighborhood = document.getElementById("customer-other-neighborhood");
+    if (neighborhood) {
+      const match = Array.from(neighborhoodSelect.options).find(
+        (opt) => opt.value.toUpperCase() === neighborhood.toUpperCase() && opt.value !== "__other__"
+      );
+      if (match) {
+        neighborhoodSelect.value = match.value;
+        otherNeighborhood.hidden = true;
+        otherNeighborhood.required = false;
+        otherNeighborhood.value = "";
+      } else {
+        neighborhoodSelect.value = "__other__";
+        otherNeighborhood.hidden = false;
+        otherNeighborhood.required = true;
+        otherNeighborhood.value = neighborhood;
+      }
+    } else {
+      neighborhoodSelect.value = "";
+      otherNeighborhood.hidden = true;
+      otherNeighborhood.required = false;
+      otherNeighborhood.value = "";
+    }
+  }
+
   function setBusy(button, busy, text) {
     if (busy) {
       button.dataset.originalText = button.innerHTML;
@@ -248,7 +333,16 @@
     document.getElementById("ledger-nav").hidden = !isOwner;
     document.getElementById("mobile-ledger-nav").hidden = !isOwner;
     document.getElementById("employee-requests-nav").hidden = !isOwner;
-    document.getElementById("mobile-employee-requests-nav").hidden = !isOwner;
+    // La pestaña móvil de Solicitudes se mantiene oculta salvo que haya pendientes (accesible desde el panel de código)
+    document.getElementById("mobile-employee-requests-nav").hidden = true;
+
+    // Unificación para el cobrador: Inicio ya contiene su ruta completa del día
+    const collectionsNav = document.getElementById("collections-nav");
+    const mobileCollectionsNav = document.getElementById("mobile-collections-nav");
+    const homeGotoCollections = document.getElementById("home-goto-collections");
+    if (collectionsNav) collectionsNav.hidden = isEmployee;
+    if (mobileCollectionsNav) mobileCollectionsNav.hidden = isEmployee;
+    if (homeGotoCollections) homeGotoCollections.hidden = isEmployee;
 
     // Solo cobros del dia, saldo por cobrar y gastos para el cobrador
     document.getElementById("customer-summary-nav").hidden = isEmployee;
@@ -280,6 +374,7 @@
     clearMessages();
     await loadDashboard();
     if ((rank[state.role] || 0) >= rank.manager) await loadEmployees();
+    if (isOwner) loadEmployeeRequests();
     if ((rank[state.role] || 0) >= rank.employee) startPaymentStream();
     showView(state.view);
   }
@@ -329,6 +424,7 @@
       ]);
       state.loans = getRows(loanData);
       state.collections = getRows(collectionData);
+      populateExistingCustomers();
       renderLoans();
       renderCollections();
       const activeLoans = state.loans.filter((loan) => !["paid", "cancelled"].includes(loan.status));
@@ -350,7 +446,7 @@
     const query = (searchInput ? searchInput.value : "").trim().toLowerCase();
     const filteredLoans = query
       ? state.loans.filter((loan) =>
-          [loan.customer_name, loan.neighborhood, loan.document_id]
+          [loan.customer_name, loan.neighborhood, loan.document_id, loan.collector_name]
             .some((field) => String(field || "").toLowerCase().includes(query))
         )
       : state.loans;
@@ -370,16 +466,24 @@
       const suggested = nextInstallment
         ? Math.min(Number(nextInstallment.amount_due) - Number(nextInstallment.amount_paid), Number(loan.balance))
         : Number(loan.balance);
+      const phone = loan.customer_phone || "";
+      const contactHtml = cleanPhoneForWhatsApp(phone)
+        ? `<div class="customer-cell-meta">` +
+          `<a class="contact-chip" href="tel:${escapeHtml(phone)}">📞 Llamar</a>` +
+          `<a class="contact-chip" target="_blank" rel="noopener" href="${escapeHtml(whatsappUrl(phone, `Hola ${name}, te escribimos de ${state.tenant ? state.tenant.tenant_name : "TuNegocio"}. Tu saldo pendiente es ${money(loan.balance)}.`))}">💬 WhatsApp</a>` +
+          `</div>`
+        : "";
+      const collectorMeta = loan.collector_name ? ` · Cobrador: ${escapeHtml(loan.collector_name)}` : "";
       row.innerHTML =
         `<div class="loan-person"><span class="customer-avatar">${escapeHtml(initials(name))}</span>` +
-        `<div><strong>${escapeHtml(name)}</strong><span>${escapeHtml(loan.neighborhood || "Sin barrio")}</span>` +
-        `<span>${escapeHtml(loan.document_id || "Sin cédula")}</span></div></div>` +
+        `<div><strong>${escapeHtml(name)}</strong><span>${escapeHtml(loan.neighborhood || "Sin barrio")}${collectorMeta}</span>` +
+        `<span>${escapeHtml(loan.document_id || "Sin cédula")}</span>${contactHtml}</div></div>` +
         `<div class="loan-detail"><strong>${money(loan.balance)}</strong>` +
         `<span>Total ${money(loan.total_payable)} · Abono ${money(Number(loan.total_payable) - Number(loan.balance))}</span>` +
         `<span>Papelería ${money(loan.paperwork_fee)} aparte</span></div>` +
         `<div class="loan-detail"><strong>${collectionSummary}</strong><span>${paymentPlan}</span></div>` +
         `<button class="loan-action" type="button" data-payment-loan="${escapeHtml(loan.id)}" ` +
-        `data-payment-name="${escapeHtml(name)}" data-payment-suggested="${escapeHtml(suggested)}">Registrar pago</button>` +
+        `data-payment-name="${escapeHtml(name)}" data-payment-phone="${escapeHtml(phone)}" data-payment-suggested="${escapeHtml(suggested)}">Registrar pago</button>` +
         `<span class="status-pill ${statusClass(loan.status)}">${escapeHtml(labels[loan.status] || loan.status)}</span>`;
       elements.loans.append(row);
     });
@@ -394,13 +498,23 @@
             .some((field) => String(field || "").toLowerCase().includes(query))
         )
       : state.collections;
+
+    const homeSearchInput = document.getElementById("home-collection-quick-search");
+    const homeQuery = (homeSearchInput ? homeSearchInput.value : "").trim().toLowerCase();
+    const filteredHomeCollections = homeQuery
+      ? state.collections.filter((installment) =>
+          [installment.customer_name, installment.due_date, labels[installment.frequency]]
+            .some((field) => String(field || "").toLowerCase().includes(homeQuery))
+        )
+      : state.collections;
+
     const targets = [
       { list: elements.collections, empty: document.getElementById("collections-empty"), items: filteredCollections },
     ];
     const homeList = document.getElementById("home-collection-list");
     const homeEmpty = document.getElementById("home-collections-empty");
     if (homeList && homeEmpty) {
-      targets.push({ list: homeList, empty: homeEmpty, items: state.collections });
+      targets.push({ list: homeList, empty: homeEmpty, items: filteredHomeCollections });
     }
     targets.forEach(({ list, empty, items }) => {
       list.replaceChildren();
@@ -409,20 +523,27 @@
         const row = document.createElement("article");
         row.className = "loan-row";
         const name = installment.customer_name || "Cliente";
+        const phone = installment.customer_phone || "";
         const pending = installment.pending_amount ??
           (Number(installment.amount_due || 0) - Number(installment.amount_paid || 0));
         const overdue = Boolean(installment.is_overdue);
         const collectionType = installment.is_open_ended
           ? `Cuota ${escapeHtml(installment.number)} · ${escapeHtml(labels[installment.frequency] || installment.frequency)}`
           : `Cuota ${escapeHtml(installment.number)}`;
+        const contactHtml = cleanPhoneForWhatsApp(phone)
+          ? `<div class="customer-cell-meta">` +
+            `<a class="contact-chip" href="tel:${escapeHtml(phone)}">📞 Llamar</a>` +
+            `<a class="contact-chip" target="_blank" rel="noopener" href="${escapeHtml(whatsappUrl(phone, `Hola ${name}, te recordamos tu cuota de hoy por ${money(pending)}.`))}">💬 WhatsApp</a>` +
+            `</div>`
+          : "";
         row.innerHTML =
           `<div class="loan-person"><span class="customer-avatar">${escapeHtml(initials(name))}</span>` +
           `<div><strong>${escapeHtml(name)}</strong><span>${collectionType} · ` +
-          `${escapeHtml(installment.due_date)}</span></div></div>` +
+          `${escapeHtml(installment.due_date)}</span>${contactHtml}</div></div>` +
           `<div class="loan-detail"><strong>${money(pending)}</strong><span>Saldo de cuota</span></div>` +
           `<div class="loan-detail"><strong>${money(installment.amount_due)}</strong><span>Cuota completa</span></div>` +
           `<button class="loan-action" type="button" data-payment-loan="${escapeHtml(installment.loan)}" ` +
-          `data-payment-name="${escapeHtml(name)}" data-payment-suggested="${escapeHtml(pending)}">Cobrar</button>` +
+          `data-payment-name="${escapeHtml(name)}" data-payment-phone="${escapeHtml(phone)}" data-payment-suggested="${escapeHtml(pending)}">Cobrar</button>` +
           `<span class="status-pill ${overdue ? "status-delinquent" : "status-active"}">` +
           `${overdue ? "Vencida" : "Pendiente"}</span>`;
         list.append(row);
@@ -434,13 +555,20 @@
     }
   }
 
-
-
   async function loadEmployeeRequests() {
     const container = document.getElementById("employee-request-list");
     try {
       const requests = getRows(await api("/tenant-join-requests/manage/"));
       document.getElementById("employee-requests-empty").hidden = requests.length > 0;
+      const badge = document.getElementById("employee-requests-badge");
+      if (badge) {
+        badge.textContent = String(requests.length);
+        badge.hidden = requests.length === 0;
+      }
+      const mobileRequestsNav = document.getElementById("mobile-employee-requests-nav");
+      if (mobileRequestsNav && state.role === "owner") {
+        mobileRequestsNav.hidden = requests.length === 0;
+      }
       container.replaceChildren();
       requests.forEach((item) => {
         const row = document.createElement("article");
@@ -526,6 +654,41 @@
     document.getElementById("expenses-empty").hidden = expenses.length > 0;
   }
 
+  async function reversePayment(paymentId, button) {
+    setBusy(button, true, "Reversando…");
+    try {
+      await api(`/loan-payments/${paymentId}/reverse/`, {
+        method: "POST",
+        body: JSON.stringify({ reason: "Reversado desde el portal" }),
+      });
+      await Promise.all([
+        loadCustomerSummary(state.customerSummaryPage || 1),
+        loadDashboard(),
+      ]);
+      showToast("Pago reversado correctamente.");
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  async function assignLoanCollector(loanId, collectorId, selectEl) {
+    selectEl.disabled = true;
+    try {
+      await api(`/loans/${loanId}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ collector: collectorId || null }),
+      });
+      await loadDashboard();
+      showToast("Cobrador asignado al préstamo.");
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      selectEl.disabled = false;
+    }
+  }
+
   async function loadCustomerSummary(page = 1) {
     const form = document.getElementById("customer-summary-filters");
     const params = new URLSearchParams();
@@ -539,7 +702,10 @@
       const report = await api(`/customer-loan-summary/?${params.toString()}`);
       state.customerSummary = report;
       state.customerSummaryPage = report.page || page;
+      populateExistingCustomers();
       const rows = report.rows || [];
+      const isOwner = state.role === "owner";
+      const isManager = (rank[state.role] || 0) >= rank.manager;
       document.getElementById("customer-summary-empty").hidden = rows.length > 0;
       document.getElementById("customer-summary-rows").innerHTML = rows.map((customer) => {
         const loans = (customer.loans || []).map((loan) => {
@@ -548,17 +714,52 @@
             `<td>${money(installment.amount_due)}</td><td>${money(installment.amount_paid)}</td>` +
             `<td>${money(installment.pending_amount)}</td><td>${escapeHtml(labels[installment.status] || installment.status)}</td></tr>`
           ).join("");
-          const paymentHistory = (loan.payments || []).map((payment) =>
-            `<tr><td>${escapeHtml(displayDate(payment.date))}</td><td>${money(payment.amount)}</td>` +
-            `<td>${escapeHtml(payment.direction === "reversal" ? "Reversa" : "Abono")}</td>` +
-            `<td>${escapeHtml(payment.collector_name || "")}</td><td>${escapeHtml(payment.method || "")}</td></tr>`
-          ).join("");
-          return `<section class="amortization-loan"><h4>Préstamo ${escapeHtml(loan.date)} · ${escapeHtml(labels[loan.frequency] || loan.frequency)}</h4>` +
+          const paymentHistory = (loan.payments || []).map((payment) => {
+            let actionCell = "";
+            if (payment.direction === "payment") {
+              if (payment.is_reversed) {
+                actionCell = `<span class="muted">Reversado</span>`;
+              } else if (isOwner) {
+                actionCell = `<button class="button button-quiet button-xs" type="button" data-reverse-payment="${escapeHtml(payment.id)}">Reversar</button>`;
+              }
+            }
+            return `<tr><td>${escapeHtml(displayDate(payment.date))}</td><td>${money(payment.amount)}</td>` +
+              `<td>${escapeHtml(payment.direction === "reversal" ? "Reversa" : "Abono")}</td>` +
+              `<td>${escapeHtml(payment.collector_name || "")}</td><td>${escapeHtml(payment.method || "")}</td>` +
+              `<td>${actionCell}</td></tr>`;
+          }).join("");
+          const collectorOptions = [
+            `<option value="">Sin cobrador asignado</option>`,
+            ...state.employees.map((emp) => {
+              const label = emp.full_name || emp.email || `Cobrador ${emp.id}`;
+              const selected = String(emp.id) === String(loan.collector_id || "") ? " selected" : "";
+              return `<option value="${escapeHtml(emp.id)}"${selected}>Cobrador: ${escapeHtml(label)}</option>`;
+            }),
+          ].join("");
+          const collectorControl = isManager
+            ? `<select class="collector-select-inline" data-assign-loan="${escapeHtml(loan.id)}" aria-label="Asignar cobrador">${collectorOptions}</select>`
+            : (loan.collector_name ? `<span class="muted">Cobrador: ${escapeHtml(loan.collector_name)}</span>` : "");
+          return `<section class="amortization-loan"><div class="amortization-header"><h4>Préstamo ${escapeHtml(loan.date)} · ${escapeHtml(labels[loan.frequency] || loan.frequency)}</h4>${collectorControl}</div>` +
             `<p>Capital ${money(loan.principal)} · Interés ${money(loan.interest)} · Papelería ${money(loan.paperwork)} · Saldo ${money(loan.balance)}</p>` +
             `<div class="ledger-table-wrap"><table class="ledger-table"><thead><tr><th>CUOTA</th><th>VENCIMIENTO</th><th>VALOR</th><th>PAGADO</th><th>PENDIENTE</th><th>ESTADO</th></tr></thead><tbody>${installments}</tbody></table></div>` +
-            `<h5>Historial de pagos</h5><div class="ledger-table-wrap"><table class="ledger-table"><thead><tr><th>FECHA</th><th>VALOR NETO</th><th>MOVIMIENTO</th><th>COBRADOR</th><th>MÉTODO</th></tr></thead><tbody>${paymentHistory}</tbody></table></div></section>`;
+            `<h5>Historial de pagos</h5><div class="ledger-table-wrap"><table class="ledger-table"><thead><tr><th>FECHA</th><th>VALOR NETO</th><th>MOVIMIENTO</th><th>COBRADOR</th><th>MÉTODO</th><th>ACCIÓN</th></tr></thead><tbody>${paymentHistory}</tbody></table></div></section>`;
         }).join("");
-        return `<tr><td><strong>${escapeHtml(customer.customer_name)}</strong></td><td>${escapeHtml(customer.loan_count)}</td>` +
+        const phone = customer.customer_phone || "";
+        const contactChips = [
+          isManager
+            ? `<button class="contact-chip" type="button" data-renew-customer="1" ` +
+              `data-full-name="${escapeHtml(customer.customer_name || "")}" ` +
+              `data-document-id="${escapeHtml(customer.customer_document || "")}" ` +
+              `data-phone="${escapeHtml(phone)}" ` +
+              `data-neighborhood="${escapeHtml(customer.customer_neighborhood || "")}">＋ Prestar / Renovar</button>`
+            : "",
+          cleanPhoneForWhatsApp(phone)
+            ? `<a class="contact-chip" target="_blank" rel="noopener" href="${escapeHtml(whatsappUrl(phone, `Hola ${customer.customer_name}, te escribimos de ${state.tenant ? state.tenant.tenant_name : "TuNegocio"}.`))}">💬 WhatsApp</a>`
+            : "",
+        ].filter(Boolean).join("");
+        return `<tr><td><strong>${escapeHtml(customer.customer_name)}</strong>` +
+          (contactChips ? `<div class="customer-cell-meta">${contactChips}</div>` : "") +
+          `</td><td>${escapeHtml(customer.loan_count)}</td>` +
           `<td>${money(customer.principal)}</td><td>${money(customer.paperwork)}</td><td>${money(customer.interest)}</td>` +
           `<td>${money(customer.total_payable)}</td><td>${money(customer.collected)}</td><td><strong>${money(customer.balance)}</strong></td>` +
           `<td><details class="amortization-details"><summary>Ver amortización</summary>${loans || "<p>Sin detalle de préstamos.</p>"}</details></td></tr>`;
@@ -587,7 +788,7 @@
   }
 
   function showView(view) {
-    if (state.role === "employee" && ["ledger", "employee-requests", "customer-summary", "new-loan"].includes(view)) {
+    if (state.role === "employee" && ["collections", "ledger", "employee-requests", "customer-summary", "new-loan"].includes(view)) {
       view = "home";
     } else if ((view === "ledger" || view === "employee-requests") && state.role !== "owner") {
       view = "home";
@@ -595,13 +796,13 @@
     state.view = view;
     const isEmployee = state.role === "employee";
     const titles = {
-      home: ["Resumen", isEmployee ? "Saldo por cobrar y cobros asignados del día." : "Una mirada clara a tus préstamos."],
+      home: [isEmployee ? "Mi ruta de hoy" : "Resumen", isEmployee ? "Tu ruta de cobro diaria y saldo activo en calle." : "Una mirada clara a tus préstamos."],
       collections: ["Cobros de hoy", "Cuotas pendientes de tu cartera."],
       ledger: ["Libro de cartera", "Consulta el formato del Excel por período y frecuencia."],
       cashflow: ["Caja y gastos", isEmployee ? "Registra tus gastos diarios y consulta tu balance de caja." : "Controla el dinero inicial, los cobros, los préstamos y los gastos."],
       "customer-summary": ["Resumen por cliente", "Consulta la cartera consolidada y el detalle de amortización."],
       "employee-requests": ["Solicitudes de empleados", "Aprueba o rechaza las solicitudes de acceso al negocio."],
-      "new-loan": ["Nuevo préstamo", "Registra un cliente y define su frecuencia de cobro."],
+      "new-loan": ["Nuevo préstamo", "Registra un cliente o renueva su crédito en segundos."],
     };
     document.getElementById("view-title").textContent = titles[view][0];
     document.getElementById("view-subtitle").textContent = titles[view][1];
@@ -847,6 +1048,8 @@
     );
     document.getElementById("payment-loan-id").value = loanId;
     document.getElementById("payment-customer").textContent = button.dataset.paymentName || "Cliente";
+    elements.dialog.dataset.customerPhone = button.dataset.paymentPhone || (loan && loan.customer_phone) || "";
+    elements.dialog.dataset.customerName = button.dataset.paymentName || (loan && loan.customer_name) || "Cliente";
     const amountInput = document.getElementById("payment-amount");
     amountInput.value = suggested > 0 ? suggested.toFixed(2) : "";
     amountInput.max = balance.toFixed(2);
@@ -992,8 +1195,27 @@
   document.addEventListener("click", (event) => {
     const accept = event.target.closest("[data-request-accept]");
     const reject = event.target.closest("[data-request-reject]");
+    const reverseBtn = event.target.closest("[data-reverse-payment]");
+    const renewBtn = event.target.closest("[data-renew-customer]");
     if (accept) decideEmployeeRequest(accept.dataset.requestAccept, "accept", accept);
     if (reject) decideEmployeeRequest(reject.dataset.requestReject, "reject", reject);
+    if (reverseBtn) reversePayment(reverseBtn.dataset.reversePayment, reverseBtn);
+    if (renewBtn) {
+      prefillCustomerForm({
+        fullName: renewBtn.dataset.fullName || "",
+        documentId: renewBtn.dataset.documentId || "",
+        phone: renewBtn.dataset.phone || "",
+        neighborhood: renewBtn.dataset.neighborhood || "",
+      });
+      showView("new-loan");
+      showToast(`Datos de ${renewBtn.dataset.fullName || "cliente"} cargados para renovar.`);
+    }
+  });
+  document.addEventListener("change", (event) => {
+    const assignSelect = event.target.closest("[data-assign-loan]");
+    if (assignSelect) {
+      assignLoanCollector(assignSelect.dataset.assignLoan, assignSelect.value, assignSelect);
+    }
   });
   document.getElementById("logout-button").addEventListener("click", () => logout());
   document.getElementById("topbar-avatar").addEventListener("click", () => logout());
@@ -1035,6 +1257,24 @@
   if (loanQuickSearch) loanQuickSearch.addEventListener("input", renderLoans);
   const collectionQuickSearch = document.getElementById("collection-quick-search");
   if (collectionQuickSearch) collectionQuickSearch.addEventListener("input", renderCollections);
+  const homeCollectionQuickSearch = document.getElementById("home-collection-quick-search");
+  if (homeCollectionQuickSearch) homeCollectionQuickSearch.addEventListener("input", renderCollections);
+  const existingCustomerSelect = document.getElementById("existing-customer-select");
+  if (existingCustomerSelect) {
+    existingCustomerSelect.addEventListener("change", (event) => {
+      const opt = event.currentTarget.selectedOptions[0];
+      if (!opt || !opt.value) {
+        prefillCustomerForm({});
+        return;
+      }
+      prefillCustomerForm({
+        fullName: opt.dataset.fullName || "",
+        documentId: opt.dataset.documentId || "",
+        phone: opt.dataset.phone || "",
+        neighborhood: opt.dataset.neighborhood || "",
+      });
+    });
+  }
   const chipSuggested = document.getElementById("chip-suggested-amount");
   if (chipSuggested) {
     chipSuggested.addEventListener("click", () => {
@@ -1061,6 +1301,7 @@
       customer_details: {
         full_name: form.get("full_name").trim(),
         document_id: form.get("document_id").trim(),
+        phone: String(form.get("phone") || "").trim(),
         neighborhood: selectedNeighborhood === "__other__"
           ? otherNeighborhood.value.trim()
           : selectedNeighborhood,
@@ -1219,9 +1460,24 @@
     }
     setBusy(button, true, "Registrando…");
     try {
+      const customerName = elements.dialog.dataset.customerName || "Cliente";
+      const customerPhone = elements.dialog.dataset.customerPhone || "";
       await api("/loan-payments/", { method: "POST", body: JSON.stringify(payment) });
       elements.dialog.close();
       await loadDashboard();
+      const updatedLoan = state.loans.find((item) => String(item.id) === String(loanId));
+      const newBalance = updatedLoan ? Number(updatedLoan.balance || 0) : 0;
+      const receiptText =
+        `Comprobante de abono - ${state.tenant ? state.tenant.tenant_name : "TuNegocio"}\n` +
+        `Cliente: ${customerName}\n` +
+        `Abono recibido: ${money(payment.amount)}\n` +
+        `Nuevo saldo pendiente: ${money(newBalance)}\n` +
+        `Fecha: ${displayDate(localDateValue())}`;
+      elements.error.hidden = true;
+      elements.notice.innerHTML =
+        `<span>Pago de <strong>${money(payment.amount)}</strong> registrado a ${escapeHtml(customerName)}.</span> ` +
+        `<a target="_blank" rel="noopener" href="${escapeHtml(whatsappUrl(customerPhone, receiptText))}">📲 Enviar comprobante por WhatsApp</a>`;
+      elements.notice.hidden = false;
       showToast("Pago registrado correctamente.");
     } catch (error) {
       showToast(error.message);

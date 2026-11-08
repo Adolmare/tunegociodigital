@@ -383,7 +383,7 @@ class CustomerLoanSummaryView(TenantContextMixin, APIView):
         loan_rows = (
             list(
                 loans_qs.filter(customer_id__in=page_customer_ids)
-                .select_related("customer")
+                .select_related("customer", "collector")
                 .prefetch_related("schedule")
                 .order_by("created_at", "id")
             )
@@ -410,17 +410,24 @@ class CustomerLoanSummaryView(TenantContextMixin, APIView):
         )
         payment_details = {}
         if loan_ids:
-            for payment in (
+            all_payments = list(
                 LoanPayment.objects.filter(loan_id__in=loan_ids)
                 .select_related("collector")
                 .order_by("paid_at", "id")
-            ):
+            )
+            reversed_ids = {
+                pmt.reversal_of_id
+                for pmt in all_payments
+                if pmt.direction == "reversal" and pmt.reversal_of_id is not None
+            }
+            for payment in all_payments:
                 payment_details.setdefault(payment.loan_id, []).append({
                     "id": str(payment.pk),
                     "paid_at": payment.paid_at.isoformat(),
                     "date": timezone.localtime(payment.paid_at).date().isoformat(),
                     "amount": str(-payment.amount if payment.direction == "reversal" else payment.amount),
                     "direction": payment.direction,
+                    "is_reversed": payment.pk in reversed_ids,
                     "method": payment.method,
                     "collector_name": payment.collector.full_name,
                 })
@@ -429,6 +436,9 @@ class CustomerLoanSummaryView(TenantContextMixin, APIView):
             customer.pk: {
                 "customer_id": str(customer.pk),
                 "customer_name": customer.full_name,
+                "customer_phone": customer.phone,
+                "customer_document": customer.document_id,
+                "customer_neighborhood": customer.neighborhood,
                 "loan_count": 0,
                 "principal": ZERO,
                 "paperwork": ZERO,
@@ -454,6 +464,8 @@ class CustomerLoanSummaryView(TenantContextMixin, APIView):
             row["loans"].append({
                 "id": str(loan.pk),
                 "date": loan.start_date.isoformat(),
+                "collector_id": str(loan.collector_id) if loan.collector_id else "",
+                "collector_name": loan.collector.full_name if loan.collector else "Sin asignar",
                 "principal": str(loan.principal),
                 "paperwork": str(loan.paperwork_fee),
                 "interest": str(interest),

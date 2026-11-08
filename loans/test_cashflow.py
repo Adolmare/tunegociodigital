@@ -333,3 +333,58 @@ def test_export_excel_generates_multi_sheet_workbook_for_day_week_and_month(
         assert wb["Libro de Cartera"]["D2"].value == "Cliente Excel"
         assert wb["Cierre de Caja"]["A2"].value == "Cobrador Excel"
         assert wb["Abonos del Período"]["C2"].value == "Cliente Excel"
+
+
+@pytest.mark.django_db
+def test_renew_loan_with_existing_customer_document_reuses_customer_and_updates_phone(
+    two_tenants, client_for, rls_context, seeded_tools
+):
+    tenant = two_tenants["tenant_a"]
+    owner = two_tenants["user_a"]
+    rls_context(owner, tenant)
+    enable_tool(tenant, Tool.objects.get(code="loans"))
+
+    owner_client = client_for(owner, tenant)
+    today = timezone.localdate()
+    first_resp = owner_client.post(
+        reverse("loan-list"),
+        {
+            "customer_details": {
+                "full_name": "Cliente Frecuente",
+                "document_id": "DOC-999",
+                "phone": "3001112233",
+                "neighborhood": "VENECIA",
+            },
+            "principal": "200.00",
+            "interest_rate": "20.00",
+            "is_open_ended": True,
+            "frequency": "daily",
+            "start_date": today.isoformat(),
+        },
+        format="json",
+    )
+    assert first_resp.status_code == status.HTTP_201_CREATED
+    assert first_resp.data["customer_phone"] == "3001112233"
+
+    second_resp = owner_client.post(
+        reverse("loan-list"),
+        {
+            "customer_details": {
+                "full_name": "Cliente Frecuente",
+                "document_id": "DOC-999",
+                "phone": "3009998877",
+                "neighborhood": "VENECIA",
+            },
+            "principal": "300.00",
+            "interest_rate": "20.00",
+            "is_open_ended": True,
+            "frequency": "daily",
+            "start_date": today.isoformat(),
+        },
+        format="json",
+    )
+    assert second_resp.status_code == status.HTTP_201_CREATED
+    assert second_resp.data["customer"] == first_resp.data["customer"]
+    assert second_resp.data["customer_phone"] == "3009998877"
+    assert Customer.unscoped.filter(tenant=tenant, document_id="DOC-999").count() == 1
+

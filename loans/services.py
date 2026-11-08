@@ -97,7 +97,20 @@ def create_loan(
     if customer is not None and customer_details is not None:
         raise ValidationError({"customer": "Envía un cliente existente o uno nuevo, no ambos."})
     if customer_details is not None:
-        customer = Customer.objects.create(tenant=tenant, **customer_details)
+        doc_id = (customer_details.get("document_id") or "").strip()
+        existing = (
+            Customer.objects.filter(document_id=doc_id, deleted_at__isnull=True).first()
+            if doc_id
+            else None
+        )
+        if existing is not None:
+            for field_name in ("full_name", "neighborhood", "phone"):
+                if customer_details.get(field_name):
+                    setattr(existing, field_name, customer_details[field_name])
+            existing.save()
+            customer = existing
+        else:
+            customer = Customer.objects.create(tenant=tenant, **customer_details)
 
     principal = _money(principal)
     interest_rate = Decimal(interest_rate)
