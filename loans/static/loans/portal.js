@@ -344,8 +344,16 @@
 
   function renderLoans() {
     elements.loans.replaceChildren();
-    document.getElementById("loans-empty").hidden = state.loans.length > 0;
-    state.loans.forEach((loan) => {
+    const searchInput = document.getElementById("loan-quick-search");
+    const query = (searchInput ? searchInput.value : "").trim().toLowerCase();
+    const filteredLoans = query
+      ? state.loans.filter((loan) =>
+          [loan.customer_name, loan.neighborhood, loan.document_id]
+            .some((field) => String(field || "").toLowerCase().includes(query))
+        )
+      : state.loans;
+    document.getElementById("loans-empty").hidden = filteredLoans.length > 0;
+    filteredLoans.forEach((loan) => {
       const row = document.createElement("article");
       row.className = "loan-row";
       const name = loan.customer_name || "Cliente";
@@ -376,18 +384,26 @@
   }
 
   function renderCollections() {
+    const searchInput = document.getElementById("collection-quick-search");
+    const query = (searchInput ? searchInput.value : "").trim().toLowerCase();
+    const filteredCollections = query
+      ? state.collections.filter((installment) =>
+          [installment.customer_name, installment.due_date, labels[installment.frequency]]
+            .some((field) => String(field || "").toLowerCase().includes(query))
+        )
+      : state.collections;
     const targets = [
-      { list: elements.collections, empty: document.getElementById("collections-empty") },
+      { list: elements.collections, empty: document.getElementById("collections-empty"), items: filteredCollections },
     ];
     const homeList = document.getElementById("home-collection-list");
     const homeEmpty = document.getElementById("home-collections-empty");
     if (homeList && homeEmpty) {
-      targets.push({ list: homeList, empty: homeEmpty });
+      targets.push({ list: homeList, empty: homeEmpty, items: state.collections });
     }
-    targets.forEach(({ list, empty }) => {
+    targets.forEach(({ list, empty, items }) => {
       list.replaceChildren();
-      empty.hidden = state.collections.length > 0;
-      state.collections.forEach((installment) => {
+      empty.hidden = items.length > 0;
+      items.forEach((installment) => {
         const row = document.createElement("article");
         row.className = "loan-row";
         const name = installment.customer_name || "Cliente";
@@ -829,8 +845,15 @@
     );
     document.getElementById("payment-loan-id").value = loanId;
     document.getElementById("payment-customer").textContent = button.dataset.paymentName || "Cliente";
-    document.getElementById("payment-amount").value = suggested > 0 ? suggested.toFixed(2) : "";
-    document.getElementById("payment-amount").max = balance.toFixed(2);
+    const amountInput = document.getElementById("payment-amount");
+    amountInput.value = suggested > 0 ? suggested.toFixed(2) : "";
+    amountInput.max = balance.toFixed(2);
+    amountInput.dataset.suggested = suggested > 0 ? suggested.toFixed(2) : "";
+    amountInput.dataset.balance = balance > 0 ? balance.toFixed(2) : "";
+    const chipSuggested = document.getElementById("chip-suggested-amount");
+    const chipBalance = document.getElementById("chip-full-balance");
+    if (chipSuggested) chipSuggested.textContent = `Cuota: ${money(suggested)}`;
+    if (chipBalance) chipBalance.textContent = `Saldo: ${money(balance)}`;
     document.getElementById("payment-balance").textContent = money(balance);
     document.getElementById("payment-suggestion").textContent =
       suggested > 0
@@ -985,11 +1008,18 @@
   }
   neighborhoodSelect.addEventListener("change", syncOtherNeighborhood);
 
+  const ratesPer100k = { daily: 4000, weekly: 20000, biweekly: 40000 };
   function updateLoanEstimate() {
     const principal = Number(document.getElementById("principal").value || 0);
     const rate = Number(document.getElementById("interest-rate").value || 0);
+    const freq = document.getElementById("frequency").value || "daily";
     const total = principal + principal * rate / 100;
+    const collectionPerInstallment = principal * (ratesPer100k[freq] || 4000) / 100000;
     document.getElementById("preview-total").textContent = money(total);
+    const previewInstallment = document.getElementById("preview-installment");
+    if (previewInstallment) {
+      previewInstallment.textContent = money(collectionPerInstallment);
+    }
   }
   ["principal", "interest-rate"].forEach((id) => {
     document.getElementById(id).addEventListener("input", updateLoanEstimate);
@@ -997,7 +1027,26 @@
   document.getElementById("frequency").addEventListener("change", (event) => {
     document.getElementById("preview-frequency").textContent =
       labels[event.currentTarget.value] || event.currentTarget.value;
+    updateLoanEstimate();
   });
+  const loanQuickSearch = document.getElementById("loan-quick-search");
+  if (loanQuickSearch) loanQuickSearch.addEventListener("input", renderLoans);
+  const collectionQuickSearch = document.getElementById("collection-quick-search");
+  if (collectionQuickSearch) collectionQuickSearch.addEventListener("input", renderCollections);
+  const chipSuggested = document.getElementById("chip-suggested-amount");
+  if (chipSuggested) {
+    chipSuggested.addEventListener("click", () => {
+      const amountInput = document.getElementById("payment-amount");
+      if (amountInput.dataset.suggested) amountInput.value = amountInput.dataset.suggested;
+    });
+  }
+  const chipBalance = document.getElementById("chip-full-balance");
+  if (chipBalance) {
+    chipBalance.addEventListener("click", () => {
+      const amountInput = document.getElementById("payment-amount");
+      if (amountInput.dataset.balance) amountInput.value = amountInput.dataset.balance;
+    });
+  }
 
   document.getElementById("loan-form").addEventListener("submit", async (event) => {
     event.preventDefault();
