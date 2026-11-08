@@ -12,7 +12,7 @@ from django.http import StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -47,17 +47,25 @@ from .services import (
 )
 
 
-def _read_payment_events(user_id, tenant_id, cursor):
+def _read_payment_events(user_id, tenant_id, cursor, collector_id=None):
+    """Lee eventos de pagos del negocio.
+
+    Si ``collector_id`` viene informado (empleados), solo devuelve los eventos
+    cuyo cobrador coincide; los roles de gestión ven todos los del negocio.
+    """
     with transaction.atomic():
         set_database_context(user_id, tenant_id)
+        queryset = EventInbox.unscoped.filter(
+            tenant_id=tenant_id,
+            event_name__in=["loan.payment_received", "loan.payment_reversed"],
+            occurred_at__gte=cursor,
+        )
+        if collector_id is not None:
+            queryset = queryset.filter(payload__collector_id=str(collector_id))
         return list(
-            EventInbox.unscoped.filter(
-                tenant_id=tenant_id,
-                event_name__in=["loan.payment_received", "loan.payment_reversed"],
-                occurred_at__gte=cursor,
-            )
-            .order_by("occurred_at", "id")
-            .values("id", "occurred_at", "event_name", "payload")[:100]
+            queryset.order_by("occurred_at", "id").values(
+                "id", "occurred_at", "event_name", "payload"
+            )[:100]
         )
 
 
@@ -79,8 +87,7 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
     def get_queryset(self):
         queryset = Loan.objects.all()
         if self.request.membership.role == "employee":
-            assigned = queryset.filter(collector__user=self.request.user)
-            queryset = assigned if assigned.exists() else queryset.filter(collector__isnull=True)
+            queryset = queryset.filter(collector__user=self.request.user)
         return queryset
 
     def perform_create(self, serializer):
@@ -373,6 +380,16 @@ class LoanPaymentEventStreamView(TenantContextMixin, APIView):
         tenant_id = str(request.tenant.pk)
         user_id = str(request.user.pk)
 
+        # Los empleados solo reciben los eventos de sus propios cobros.
+        collector_id = None
+        if request.membership.role == "employee":
+            collector = Employee.objects.filter(
+                user=request.user, is_active=True, deleted_at__isnull=True
+            ).first()
+            if collector is None:
+                raise PermissionDenied("No tienes un perfil de cobrador activo.")
+            collector_id = str(collector.pk)
+
         async def stream():
             nonlocal cursor
             yield "event: ready\ndata: {}\n\n"
@@ -381,7 +398,7 @@ class LoanPaymentEventStreamView(TenantContextMixin, APIView):
                 events = await sync_to_async(
                     _read_payment_events,
                     thread_sensitive=True,
-                )(user_id, tenant_id, cursor)
+                )(user_id, tenant_id, cursor, collector_id)
 
                 for event in events:
                     occurred_at = event["occurred_at"]

@@ -205,8 +205,7 @@ def overdue_installments(*, tenant, as_of=None, collector=None):
         loan__status__in=["active", "delinquent"],
     )
     if collector is not None:
-        assigned = queryset.filter(loan__collector=collector)
-        queryset = assigned if assigned.exists() else queryset.filter(loan__collector__isnull=True)
+        queryset = queryset.filter(loan__collector=collector)
     return queryset.order_by("due_date", "loan__customer__full_name", "number")
 
 
@@ -301,6 +300,7 @@ def register_payment(*, loan, collector, amount, method="cash", user=None):
         user_id=str(user.pk) if user is not None else None,
         loan_id=str(loan.pk),
         payment_id=str(payment.pk),
+        collector_id=str(collector.pk),
         amount=str(amount),
         balance=str(loan.balance),
     )
@@ -362,6 +362,7 @@ def reverse_payment(*, payment, user):
         loan_id=str(loan.pk),
         payment_id=str(payment.pk),
         reversal_id=str(reversal.pk),
+        collector_id=str(payment.collector_id) if payment.collector_id else None,
         amount=str(reversal.amount),
         balance=str(loan.balance),
     )
