@@ -1,5 +1,7 @@
 import os
+import warnings
 
+from django.core.checks import Tags, Warning as CheckWarning, register
 from django.core.exceptions import ImproperlyConfigured
 
 os.environ["DJANGO_SETTINGS_MODULE"] = "config.settings.prod"
@@ -50,7 +52,18 @@ r2_account_id = env.str("R2_ACCOUNT_ID", default="")
 r2_access_key_id = env.str("R2_ACCESS_KEY_ID", default="")
 r2_secret_access_key = env.str("R2_SECRET_ACCESS_KEY", default="")
 r2_bucket_name = env.str("R2_BUCKET_NAME", default="")
-has_r2 = bool(r2_account_id and r2_access_key_id and r2_secret_access_key and r2_bucket_name)
+r2_vars = {
+    "R2_ACCOUNT_ID": r2_account_id,
+    "R2_ACCESS_KEY_ID": r2_access_key_id,
+    "R2_SECRET_ACCESS_KEY": r2_secret_access_key,
+    "R2_BUCKET_NAME": r2_bucket_name,
+}
+has_r2 = all(r2_vars.values())
+if any(r2_vars.values()) and not has_r2:
+    missing_r2 = ", ".join(name for name, value in r2_vars.items() if not value)
+    raise ImproperlyConfigured(
+        f"Configuración incompleta de Cloudflare R2; faltan: {missing_r2}."
+    )
 
 if has_r2:
     default_storage = {
@@ -68,9 +81,32 @@ if has_r2:
         },
     }
 else:
+    warnings.warn(
+        "Cloudflare R2 no está configurado; FileSystemStorage usa disco efímero "
+        "en Render y los archivos subidos se perderán en cada despliegue.",
+        RuntimeWarning,
+        stacklevel=1,
+    )
     default_storage = {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     }
+
+
+@register(Tags.files, deploy=True)
+def check_production_media_storage(app_configs, **kwargs):
+    if not has_r2:
+        return [
+            CheckWarning(
+                "Cloudflare R2 no está configurado; FileSystemStorage usa disco "
+                "efímero en Render y los archivos subidos se perderán en cada despliegue.",
+                hint=(
+                    "Configura R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY "
+                    "y R2_BUCKET_NAME para almacenamiento persistente."
+                ),
+                id="core.W001",
+            )
+        ]
+    return []
 
 STORAGES = {
     "default": default_storage,

@@ -508,17 +508,19 @@
     document.getElementById("expenses-empty").hidden = expenses.length > 0;
   }
 
-  async function loadCustomerSummary() {
+  async function loadCustomerSummary(page = 1) {
     const form = document.getElementById("customer-summary-filters");
     const params = new URLSearchParams();
     if (form.elements.search.value.trim()) params.set("search", form.elements.search.value.trim());
     if (form.elements.start.value) params.set("start", form.elements.start.value);
     if (form.elements.end.value) params.set("end", form.elements.end.value);
+    params.set("page", String(page));
     const button = document.getElementById("customer-summary-button");
     setBusy(button, true, "Buscando…");
     try {
       const report = await api(`/customer-loan-summary/?${params.toString()}`);
       state.customerSummary = report;
+      state.customerSummaryPage = report.page || page;
       const rows = report.rows || [];
       document.getElementById("customer-summary-empty").hidden = rows.length > 0;
       document.getElementById("customer-summary-rows").innerHTML = rows.map((customer) => {
@@ -549,6 +551,16 @@
           `<td>${money(totals.paperwork)}</td><td>${money(totals.interest)}</td><td>${money(totals.total_payable)}</td>` +
           `<td>${money(totals.collected)}</td><td>${money(totals.balance)}</td><td></td></tr>`
         : "";
+      const pagination = document.getElementById("customer-summary-pagination");
+      if (pagination) {
+        const totalPages = report.total_pages || 1;
+        const currentPage = report.page || 1;
+        pagination.hidden = totalPages <= 1;
+        document.getElementById("customer-summary-page-info").textContent =
+          `Página ${currentPage} de ${totalPages} (${report.customer_count || 0} clientes)`;
+        document.getElementById("customer-summary-prev").disabled = !report.has_previous;
+        document.getElementById("customer-summary-next").disabled = !report.has_next;
+      }
     } catch (error) {
       showError(error.message);
     } finally {
@@ -691,7 +703,15 @@
   });
   document.getElementById("customer-summary-filters").addEventListener("submit", (event) => {
     event.preventDefault();
-    loadCustomerSummary();
+    loadCustomerSummary(1);
+  });
+  document.getElementById("customer-summary-prev").addEventListener("click", () => {
+    const current = state.customerSummaryPage || 1;
+    if (current > 1) loadCustomerSummary(current - 1);
+  });
+  document.getElementById("customer-summary-next").addEventListener("click", () => {
+    const current = state.customerSummaryPage || 1;
+    loadCustomerSummary(current + 1);
   });
 
   document.getElementById("cash-opening-form").addEventListener("submit", async (event) => {

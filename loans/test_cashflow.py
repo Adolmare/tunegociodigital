@@ -135,3 +135,128 @@ def test_customer_loan_summary_groups_multiple_loans_without_duplicate_customer_
     assert Decimal(row["principal"]) == Decimal("300.00")
     assert len(row["loans"]) == 2
     assert all(len(item["installments"]) == 2 for item in row["loans"])
+
+
+@pytest.mark.django_db
+def test_cash_summary_counts_principal_lent_by_disbursement_date_not_start_date(
+    two_tenants, client_for, rls_context, seeded_tools
+):
+    tenant = two_tenants["tenant_a"]
+    owner = two_tenants["user_a"]
+    rls_context(owner, tenant)
+    enable_tool(tenant, Tool.objects.get(code="loans"))
+
+    collector_user = User.objects.create(email="disbursement-collector@example.test")
+    Membership.objects.create(
+        user=collector_user, tenant=tenant, role=Membership.Role.EMPLOYEE
+    )
+    collector = Employee.unscoped.create(
+        tenant=tenant, user=collector_user, full_name="Cobrador Desembolso"
+    )
+    customer = Customer.unscoped.create(
+        tenant=tenant, full_name="Cliente Fecha", document_id="DISB-001", neighborhood="Centro"
+    )
+
+    today = timezone.localdate()
+    future_start = date(2026, 12, 15)
+    set_tenant(tenant)
+    try:
+        create_loan(
+            tenant=tenant,
+            customer=customer,
+            collector=collector,
+            principal="400.00",
+            interest_rate="20.00",
+            is_open_ended=True,
+            frequency="daily",
+            start_date=future_start,
+            paperwork_fee="15.00",
+        )
+        create_loan(
+            tenant=tenant,
+            customer=customer,
+            collector=collector,
+            principal="900.00",
+            interest_rate="20.00",
+            is_open_ended=True,
+            frequency="daily",
+            start_date=today,
+            paperwork_fee="30.00",
+            import_reference="excel:hist-1",
+        )
+    finally:
+        clear_tenant()
+
+    client = client_for(collector_user, tenant)
+    today_summary = client.get(
+        reverse("collector-cash-summary"),
+        {"period": "day", "date": today.isoformat()},
+    )
+    assert today_summary.status_code == status.HTTP_200_OK
+    today_row = today_summary.data["rows"][0]
+    assert Decimal(today_row["principal_lent"]) == Decimal("400.00")
+    assert Decimal(today_row["paperwork"]) == Decimal("15.00")
+
+    future_summary = client.get(
+        reverse("collector-cash-summary"),
+        {"period": "day", "date": future_start.isoformat()},
+    )
+    assert future_summary.status_code == status.HTTP_200_OK
+    future_row = future_summary.data["rows"][0]
+    assert Decimal(future_row["principal_lent"]) == Decimal("0.00")
+    assert Decimal(future_row["paperwork"]) == Decimal("0.00")
+
+
+@pytest.mark.django_db
+def test_customer_loan_summary_paginates_customers_and_keeps_global_totals(
+    two_tenants, client_for, rls_context, seeded_tools
+):
+    tenant = two_tenants["tenant_a"]
+    owner = two_tenants["user_a"]
+    rls_context(owner, tenant)
+    enable_tool(tenant, Tool.objects.get(code="loans"))
+
+    customers = [
+        Customer.unscoped.create(tenant=tenant, full_name=name, document_id=f"PAG-{idx}")
+        for idx, name in enumerate(("Ana Uno", "Beto Dos", "Carlos Tres"), start=1)
+    ]
+    set_tenant(tenant)
+    try:
+        for idx, customer in enumerate(customers, start=1):
+            create_loan(
+                tenant=tenant,
+                customer=customer,
+                principal=f"{idx * 100}.00",
+                interest_rate="10.00",
+                installments=2,
+                frequency="weekly",
+                start_date=date(2026, 10, 1),
+            )
+    finally:
+        clear_tenant()
+
+    owner_client = client_for(owner, tenant)
+    page_one = owner_client.get(
+        reverse("customer-loan-summary"), {"page": 1, "page_size": 2}
+    )
+    assert page_one.status_code == status.HTTP_200_OK
+    assert page_one.data["customer_count"] == 3
+    assert page_one.data["page"] == 1
+    assert page_one.data["page_size"] == 2
+    assert page_one.data["total_pages"] == 2
+    assert page_one.data["has_next"] is True
+    assert page_one.data["has_previous"] is False
+    assert [row["customer_name"] for row in page_one.data["rows"]] == ["Ana Uno", "Beto Dos"]
+    assert page_one.data["totals"]["loan_count"] == "3"
+    assert Decimal(page_one.data["totals"]["principal"]) == Decimal("600.00")
+
+    page_two = owner_client.get(
+        reverse("customer-loan-summary"), {"page": 2, "page_size": 2}
+    )
+    assert page_two.status_code == status.HTTP_200_OK
+    assert page_two.data["customer_count"] == 3
+    assert page_two.data["page"] == 2
+    assert page_two.data["has_next"] is False
+    assert page_two.data["has_previous"] is True
+    assert [row["customer_name"] for row in page_two.data["rows"]] == ["Carlos Tres"]
+    assert Decimal(page_two.data["totals"]["principal"]) == Decimal("600.00")

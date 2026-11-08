@@ -332,6 +332,11 @@
                 <button class="button button-primary" type="submit" id="customer-summary-button">Buscar</button>
               </form>
               <div class="ledger-table-wrap"><table class="ledger-table"><thead><tr><th>CLIENTE</th><th>PRÉSTAMOS</th><th>CAPITAL</th><th>PAPELERÍA</th><th>INTERESES</th><th>TOTAL A PAGAR</th><th>RECOGIDO</th><th>SALDO</th><th>DETALLE</th></tr></thead><tbody id="customer-summary-rows"></tbody><tfoot id="customer-summary-totals"></tfoot></table></div>
+              <div class="form-actions" id="customer-summary-pagination" hidden>
+                <button class="button button-quiet" type="button" id="customer-summary-prev">Anterior</button>
+                <span class="muted" id="customer-summary-page-info">Página 1 de 1</span>
+                <button class="button button-quiet" type="button" id="customer-summary-next">Siguiente</button>
+              </div>
               <div class="empty-state" id="customer-summary-empty" hidden><h3>No se encontraron clientes</h3><p>Prueba otro nombre o rango de fechas.</p></div>
             </section>
           </section>

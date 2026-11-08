@@ -13,7 +13,7 @@ Todos los endpoints requieren JWT y el encabezado `X-Tenant-ID`. El tenant se va
 | GET | `/api/v1/collector-cash-summary/?period=day&date=YYYY-MM-DD` | Cierre diario por cobrador. |
 | GET | `/api/v1/collector-cash-summary/?period=week&date=YYYY-MM-DD` | Resumen de la semana que contiene la fecha. |
 | GET | `/api/v1/collector-cash-summary/?period=month&date=YYYY-MM-DD` | Resumen del mes que contiene la fecha. |
-| GET | `/api/v1/customer-loan-summary/?search=nombre&start=YYYY-MM-DD&end=YYYY-MM-DD` | Agrupar préstamos por cliente y buscar por nombre. |
+| GET | `/api/v1/customer-loan-summary/?search=nombre&start=YYYY-MM-DD&end=YYYY-MM-DD&page=1&page_size=25` | Agrupar préstamos por cliente con paginación y buscar por nombre. |
 
 Los empleados solo pueden consultar y registrar sus propios movimientos. Los roles de dirección pueden consultar los cobradores del negocio activo. El backend determina el tenant desde la membresía y no acepta un tenant enviado en el cuerpo para asignar movimientos.
 
@@ -26,7 +26,7 @@ Para cada cobrador y período:
 - **Dinero inicial:** suma de los registros de caja diaria dentro del período.
 - **Recogido:** pagos registrados en el período, netos de reversas.
 - **Gastos:** suma de los gastos del cobrador en el período.
-- **Capital prestado:** capital de los préstamos asignados al cobrador y cuya fecha de inicio está dentro del período.
+- **Capital prestado:** capital de los préstamos desembolsados (`created_at` en la zona horaria del negocio, excluyendo importaciones históricas) asignados al cobrador dentro del período.
 - **Papelería:** suma de `Loan.paperwork_fee` de esos préstamos; no se agrega una segunda vez desde los pagos.
 
 La fórmula informa un saldo esperado de caja según los movimientos registrados. No es una medida contable de utilidad neta: la rentabilidad debe analizar capital recuperado, intereses, saldos y costos por separado.

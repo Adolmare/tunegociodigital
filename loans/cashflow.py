@@ -2,7 +2,8 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db import IntegrityError, transaction
-from django.db.models import Case, DecimalField, F, Sum, When
+from django.db.models import Case, Count, DecimalField, F, Sum, When
+from django.db.models.functions import Lower
 from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.exceptions import ValidationError
@@ -10,6 +11,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 
+from customers.models import Customer
 from employees.models import Employee
 from tenants.api import ActionMinRoleMixin, HasRole, HasTool, TenantContextMixin, TenantViewSet
 
@@ -228,7 +230,9 @@ class CollectorCashSummaryView(TenantContextMixin, APIView):
         loans = {
             row["collector_id"]: row
             for row in Loan.objects.filter(
-                collector_id__in=ids, start_date__range=(start, end)
+                collector_id__in=ids,
+                created_at__date__range=(start, end),
+                import_reference="",
             ).values("collector_id").annotate(
                 principal=Sum("principal"),
                 paperwork=Sum("paperwork_fee"),
@@ -282,20 +286,22 @@ class CollectorCashSummaryView(TenantContextMixin, APIView):
 
 
 class CustomerLoanSummaryView(TenantContextMixin, APIView):
-    """Una fila por cliente; pagos se agregan aparte para evitar duplicación por joins."""
+    """Una fila por cliente con paginación en BD; pagos se agregan aparte para evitar duplicación por joins."""
 
     permission_classes = [IsAuthenticated, HasTool, HasRole]
     required_tool = "loans"
     min_role = "employee"
+    default_page_size = 25
+    max_page_size = 100
 
     def get(self, request):
-        loans = Loan.objects.select_related("customer").prefetch_related("schedule").order_by("customer__full_name", "created_at")
+        loans_qs = Loan.objects.all()
         if request.membership.role == "employee":
-            loans = loans.filter(collector__user=request.user)
+            loans_qs = loans_qs.filter(collector__user=request.user)
 
         search = request.query_params.get("search", "").strip()
         if search:
-            loans = loans.filter(customer__full_name__icontains=search)
+            loans_qs = loans_qs.filter(customer__full_name__icontains=search)
 
         start = request.query_params.get("start")
         end = request.query_params.get("end")
@@ -304,55 +310,138 @@ class CustomerLoanSummaryView(TenantContextMixin, APIView):
                 date.fromisoformat(start)
             except ValueError:
                 raise ValidationError({"start": "Usa el formato YYYY-MM-DD."})
-            loans = loans.filter(start_date__gte=start)
+            loans_qs = loans_qs.filter(start_date__gte=start)
         if end:
             try:
                 date.fromisoformat(end)
             except ValueError:
                 raise ValidationError({"end": "Usa el formato YYYY-MM-DD."})
-            loans = loans.filter(start_date__lte=end)
+            loans_qs = loans_qs.filter(start_date__lte=end)
 
-        loan_rows = list(loans)
-        loan_ids = [loan.pk for loan in loan_rows]
-        payments = {
-            row["loan_id"]: row["total"] or ZERO
-            for row in LoanPayment.objects.filter(loan_id__in=loan_ids).annotate(
+        raw_page = request.query_params.get("page", "1")
+        raw_page_size = request.query_params.get("page_size", str(self.default_page_size))
+        try:
+            page = int(raw_page)
+        except (TypeError, ValueError):
+            raise ValidationError({"page": "Usa un número de página entero positivo."})
+        if page < 1:
+            raise ValidationError({"page": "La página debe ser mayor o igual a 1."})
+
+        try:
+            page_size = int(raw_page_size)
+        except (TypeError, ValueError):
+            raise ValidationError({"page_size": "Usa un tamaño de página entero positivo."})
+        if page_size < 1 or page_size > self.max_page_size:
+            raise ValidationError(
+                {"page_size": f"El tamaño de página debe estar entre 1 y {self.max_page_size}."}
+            )
+
+        customers_qs = Customer.objects.filter(
+            pk__in=loans_qs.values("customer_id")
+        ).order_by(Lower("full_name"), "full_name", "id")
+        customer_count = customers_qs.count()
+        total_pages = max(1, (customer_count + page_size - 1) // page_size)
+        offset = (page - 1) * page_size
+        page_customers = list(customers_qs[offset : offset + page_size])
+        page_customer_ids = [customer.pk for customer in page_customers]
+
+        loan_agg = loans_qs.aggregate(
+            loan_count=Count("id"),
+            principal=Sum("principal"),
+            paperwork=Sum("paperwork_fee"),
+            total_payable=Sum("total_payable"),
+            opening_paid=Sum("opening_paid"),
+            balance=Sum("balance"),
+        )
+        payment_agg = (
+            LoanPayment.objects.filter(loan__in=loans_qs)
+            .annotate(
                 signed_amount=Case(
                     When(direction="reversal", then=-F("amount")),
                     default=F("amount"),
                     output_field=DecimalField(max_digits=14, decimal_places=2),
                 )
-            ).values("loan_id").annotate(total=Sum("signed_amount"))
+            )
+            .aggregate(total=Sum("signed_amount"))
+        )
+        total_principal = loan_agg["principal"] or ZERO
+        total_paperwork = loan_agg["paperwork"] or ZERO
+        total_payable = loan_agg["total_payable"] or ZERO
+        total_interest = total_payable - total_principal
+        total_collected = (loan_agg["opening_paid"] or ZERO) + (payment_agg["total"] or ZERO)
+        total_balance = loan_agg["balance"] or ZERO
+        totals = {
+            "loan_count": loan_agg["loan_count"] or 0,
+            "principal": total_principal,
+            "paperwork": total_paperwork,
+            "interest": total_interest,
+            "total_payable": total_payable,
+            "collected": total_collected,
+            "balance": total_balance,
         }
-        payment_details = {}
-        for payment in LoanPayment.objects.filter(loan_id__in=loan_ids).select_related("collector").order_by("paid_at"):
-            payment_details.setdefault(payment.loan_id, []).append({
-                "id": str(payment.pk),
-                "paid_at": payment.paid_at.isoformat(),
-                "date": timezone.localtime(payment.paid_at).date().isoformat(),
-                "amount": str(-payment.amount if payment.direction == "reversal" else payment.amount),
-                "direction": payment.direction,
-                "method": payment.method,
-                "collector_name": payment.collector.full_name,
-            })
 
-        grouped = {}
+        loan_rows = (
+            list(
+                loans_qs.filter(customer_id__in=page_customer_ids)
+                .select_related("customer")
+                .prefetch_related("schedule")
+                .order_by("created_at", "id")
+            )
+            if page_customer_ids
+            else []
+        )
+        loan_ids = [loan.pk for loan in loan_rows]
+        payments = (
+            {
+                row["loan_id"]: row["total"] or ZERO
+                for row in LoanPayment.objects.filter(loan_id__in=loan_ids)
+                .annotate(
+                    signed_amount=Case(
+                        When(direction="reversal", then=-F("amount")),
+                        default=F("amount"),
+                        output_field=DecimalField(max_digits=14, decimal_places=2),
+                    )
+                )
+                .values("loan_id")
+                .annotate(total=Sum("signed_amount"))
+            }
+            if loan_ids
+            else {}
+        )
+        payment_details = {}
+        if loan_ids:
+            for payment in (
+                LoanPayment.objects.filter(loan_id__in=loan_ids)
+                .select_related("collector")
+                .order_by("paid_at", "id")
+            ):
+                payment_details.setdefault(payment.loan_id, []).append({
+                    "id": str(payment.pk),
+                    "paid_at": payment.paid_at.isoformat(),
+                    "date": timezone.localtime(payment.paid_at).date().isoformat(),
+                    "amount": str(-payment.amount if payment.direction == "reversal" else payment.amount),
+                    "direction": payment.direction,
+                    "method": payment.method,
+                    "collector_name": payment.collector.full_name,
+                })
+
+        grouped = {
+            customer.pk: {
+                "customer_id": str(customer.pk),
+                "customer_name": customer.full_name,
+                "loan_count": 0,
+                "principal": ZERO,
+                "paperwork": ZERO,
+                "interest": ZERO,
+                "total_payable": ZERO,
+                "collected": ZERO,
+                "balance": ZERO,
+                "loans": [],
+            }
+            for customer in page_customers
+        }
         for loan in loan_rows:
-            key = loan.customer_id
-            if key not in grouped:
-                grouped[key] = {
-                    "customer_id": str(loan.customer_id),
-                    "customer_name": loan.customer.full_name,
-                    "loan_count": 0,
-                    "principal": ZERO,
-                    "paperwork": ZERO,
-                    "interest": ZERO,
-                    "total_payable": ZERO,
-                    "collected": ZERO,
-                    "balance": ZERO,
-                    "loans": [],
-                }
-            row = grouped[key]
+            row = grouped[loan.customer_id]
             interest = loan.total_payable - loan.principal
             collected = loan.opening_paid + payments.get(loan.pk, ZERO)
             row["loan_count"] += 1
@@ -387,26 +476,26 @@ class CustomerLoanSummaryView(TenantContextMixin, APIView):
                 "payments": payment_details.get(loan.pk, []),
             })
 
-        rows = []
-        for row in sorted(grouped.values(), key=lambda item: item["customer_name"].casefold()):
-            rows.append({
+        rows = [
+            {
                 **row,
                 **{
                     key: str(row[key])
                     for key in ("principal", "paperwork", "interest", "total_payable", "collected", "balance")
                 },
-            })
-        total_keys = ("loan_count", "principal", "paperwork", "interest", "total_payable", "collected", "balance")
-        totals = {
-            key: sum((Decimal(str(row[key])) for row in rows), ZERO) if key != "loan_count"
-            else sum(row[key] for row in rows)
-            for key in total_keys
-        }
+            }
+            for row in (grouped[customer.pk] for customer in page_customers)
+        ]
         return Response({
             "search": search,
             "start_date": start or None,
             "end_date": end or None,
-            "customer_count": len(rows),
+            "customer_count": customer_count,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_previous": page > 1 and customer_count > 0,
             "rows": rows,
             "totals": {key: str(value) for key, value in totals.items()},
         }, status=status.HTTP_200_OK)

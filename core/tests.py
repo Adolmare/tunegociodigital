@@ -83,3 +83,30 @@ def test_enable_tool_enables_its_dependencies(two_tenants):
     assert set(
         TenantTool.objects.filter(tenant=tenant, is_enabled=True).values_list("tool_id", flat=True)
     ) == {dependency.pk, tool.pk}
+
+
+def test_prod_settings_warns_without_r2_and_rejects_partial_r2(monkeypatch):
+    import runpy
+    from django.core.checks.registry import registry
+    from django.core.exceptions import ImproperlyConfigured
+
+    monkeypatch.setenv("DJANGO_SETTINGS_MODULE", "config.settings.test")
+    monkeypatch.setenv("SECRET_KEY", "test-only-prod-secret-key-with-32-chars!!")
+    monkeypatch.setenv("ALLOWED_HOSTS", "example.com")
+    monkeypatch.setenv("CSRF_TRUSTED_ORIGINS", "https://example.com")
+    for var in ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET_NAME"):
+        monkeypatch.delenv(var, raising=False)
+
+    original_checks = set(registry.deployment_checks)
+    try:
+        with pytest.warns(RuntimeWarning, match="Cloudflare R2 no está configurado"):
+            ns = runpy.run_module("config.settings.prod")
+        assert ns["STORAGES"]["default"]["BACKEND"] == "django.core.files.storage.FileSystemStorage"
+        warnings_list = ns["check_production_media_storage"](None)
+        assert [w.id for w in warnings_list] == ["core.W001"]
+
+        monkeypatch.setenv("R2_BUCKET_NAME", "only-bucket")
+        with pytest.raises(ImproperlyConfigured, match="Configuración incompleta de Cloudflare R2"):
+            runpy.run_module("config.settings.prod")
+    finally:
+        registry.deployment_checks = original_checks
