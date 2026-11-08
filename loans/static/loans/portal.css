@@ -1149,6 +1149,16 @@ textarea:focus-visible {
   background: var(--surface-subtle);
 }
 
+.filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filter-actions .button {
+  flex: 1 1 auto;
+}
+
 .ledger-note {
   margin: 0 0 12px;
   color: var(--muted);

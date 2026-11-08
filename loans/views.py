@@ -8,7 +8,7 @@ from decimal import Decimal
 from asgiref.sync import sync_to_async
 from django.db import transaction
 from django.db.models import Case, DecimalField, F, Q, Sum, When
-from django.http import StreamingHttpResponse
+from django.http import HttpResponse, StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import action
@@ -29,6 +29,7 @@ from tenants.api import (
 
 from employees.models import Employee
 
+from .excel_export import build_loans_excel_workbook
 from .models import CollectionRoute, Loan, LoanInstallment, LoanPayment, RouteStop
 from .serializers import (
     CollectionRouteSerializer,
@@ -78,6 +79,7 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
         "create": "employee",
         "collection_today": "employee",
         "ledger": "owner",
+        "export_excel": "manager",
         "destroy": "owner",
         "update": "manager",
         "partial_update": "manager",
@@ -129,8 +131,7 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
             return self.get_paginated_response(data)
         return Response(LoanInstallmentSerializer(installments, many=True).data)
 
-    @action(detail=False, methods=["get"])
-    def ledger(self, request):
+    def _compute_ledger(self, request):
         filters = LoanLedgerQuerySerializer(data=request.query_params)
         filters.is_valid(raise_exception=True)
         period = filters.validated_data["period"]
@@ -270,6 +271,19 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
             totals["remaining"] += remaining
 
         rows.sort(key=lambda row: row["item"])
+        return {
+            "period": period,
+            "selected_date": selected_date,
+            "period_start": period_start,
+            "period_end": period_end,
+            "frequency": frequency,
+            "rows": rows,
+            "totals": totals,
+        }
+
+    @action(detail=False, methods=["get"])
+    def ledger(self, request):
+        report = self._compute_ledger(request)
         data = [
             {
                 **row,
@@ -279,18 +293,37 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
                     if isinstance(value, Decimal)
                 },
             }
-            for row in rows
+            for row in report["rows"]
         ]
         return Response(
             {
-                "period": period,
-                "period_start": period_start.isoformat(),
-                "period_end": period_end.isoformat(),
-                "frequency": frequency,
+                "period": report["period"],
+                "period_start": report["period_start"].isoformat(),
+                "period_end": report["period_end"].isoformat(),
+                "frequency": report["frequency"],
                 "rows": data,
-                "totals": {key: str(value) for key, value in totals.items()},
+                "totals": {key: str(value) for key, value in report["totals"].items()},
             }
         )
+
+    @action(detail=False, methods=["get"], url_path="export-excel")
+    def export_excel(self, request):
+        report = self._compute_ledger(request)
+        xlsx_bytes = build_loans_excel_workbook(
+            tenant=request.tenant,
+            period=report["period"],
+            period_start=report["period_start"],
+            period_end=report["period_end"],
+            ledger_rows=report["rows"],
+            ledger_totals=report["totals"],
+        )
+        filename = f"cartera_{request.tenant.slug}_{report['period']}_{report['selected_date'].isoformat()}.xlsx"
+        response = HttpResponse(
+            xlsx_bytes,
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
 
 
 class LoanPaymentViewSet(ActionMinRoleMixin, TenantViewSet):

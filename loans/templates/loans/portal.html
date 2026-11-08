@@ -368,10 +368,16 @@
                     <option value="all">Todos</option>
                   </select>
                 </div>
-                <button class="button button-primary" type="submit" id="ledger-search">
-                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                  <span>Consultar</span>
-                </button>
+                <div class="filter-actions">
+                  <button class="button button-primary" type="submit" id="ledger-search">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    <span>Consultar</span>
+                  </button>
+                  <button class="button button-outline" type="button" id="ledger-export-excel">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span>Exportar Excel</span>
+                  </button>
+                </div>
               </form>
               <p class="ledger-note">Los abonos iniciales importados desde Excel no tienen fecha individual: se muestran en ABONO, pero no como RECOGIDO de un día.</p>
               <div class="ledger-table-wrap">
@@ -429,10 +435,16 @@
                   <label for="cash-date">Fecha de corte</label>
                   <input id="cash-date" name="date" type="date" required>
                 </div>
-                <button class="button button-primary" type="submit" id="cash-summary-search">
-                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
-                  <span>Consultar caja</span>
-                </button>
+                <div class="filter-actions">
+                  <button class="button button-primary" type="submit" id="cash-summary-search">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+                    <span>Consultar caja</span>
+                  </button>
+                  <button class="button button-outline" type="button" id="cash-export-excel">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span>Exportar Excel</span>
+                  </button>
+                </div>
               </form>
 
               <div class="summary-grid cash-summary-grid">

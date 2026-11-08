@@ -260,3 +260,76 @@ def test_customer_loan_summary_paginates_customers_and_keeps_global_totals(
     assert page_two.data["has_previous"] is True
     assert [row["customer_name"] for row in page_two.data["rows"]] == ["Carlos Tres"]
     assert Decimal(page_two.data["totals"]["principal"]) == Decimal("600.00")
+
+
+@pytest.mark.django_db
+def test_export_excel_generates_multi_sheet_workbook_for_day_week_and_month(
+    two_tenants, client_for, rls_context, seeded_tools
+):
+    from io import BytesIO
+    from openpyxl import load_workbook
+
+    tenant = two_tenants["tenant_a"]
+    owner = two_tenants["user_a"]
+    rls_context(owner, tenant)
+    enable_tool(tenant, Tool.objects.get(code="loans"))
+
+    collector_user = User.objects.create(email="excel-collector@example.test")
+    Membership.objects.create(
+        user=collector_user, tenant=tenant, role=Membership.Role.EMPLOYEE
+    )
+    collector = Employee.unscoped.create(
+        tenant=tenant, user=collector_user, full_name="Cobrador Excel"
+    )
+    customer = Customer.unscoped.create(
+        tenant=tenant, full_name="Cliente Excel", document_id="XLS-001", neighborhood="Centro"
+    )
+    today = timezone.localdate()
+    set_tenant(tenant)
+    try:
+        loan = create_loan(
+            tenant=tenant,
+            customer=customer,
+            collector=collector,
+            principal="500.00",
+            interest_rate="20.00",
+            is_open_ended=True,
+            frequency="daily",
+            start_date=today,
+            paperwork_fee="25.00",
+        )
+    finally:
+        clear_tenant()
+
+    employee_client = client_for(collector_user, tenant)
+    assert (
+        employee_client.get(reverse("loan-export-excel"), {"period": "day", "date": today.isoformat()}).status_code
+        == status.HTTP_403_FORBIDDEN
+    )
+    employee_client.post(
+        reverse("loan-payment-list"),
+        {"loan": str(loan.pk), "amount": "50.00", "method": "cash"},
+        format="json",
+    )
+
+    owner_client = client_for(owner, tenant)
+    for period in ("day", "week", "month"):
+        response = owner_client.get(
+            reverse("loan-export-excel"),
+            {"period": period, "date": today.isoformat(), "frequency": "all"},
+        )
+        assert response.status_code == status.HTTP_200_OK
+        assert (
+            response["Content-Type"]
+            == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        wb = load_workbook(BytesIO(response.content))
+        assert wb.sheetnames == [
+            "Libro de Cartera",
+            "Cierre de Caja",
+            "Gastos",
+            "Abonos del Período",
+        ]
+        assert wb["Libro de Cartera"]["D2"].value == "Cliente Excel"
+        assert wb["Cierre de Caja"]["A2"].value == "Cobrador Excel"
+        assert wb["Abonos del Período"]["C2"].value == "Cliente Excel"

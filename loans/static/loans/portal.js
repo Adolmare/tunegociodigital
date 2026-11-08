@@ -261,6 +261,8 @@
     document.getElementById("home-collections-section").hidden = !isEmployee;
     document.getElementById("cash-opening-section").hidden = isEmployee;
     document.getElementById("expense-collector-field").hidden = isEmployee;
+    const cashExportBtn = document.getElementById("cash-export-excel");
+    if (cashExportBtn) cashExportBtn.hidden = isEmployee;
     document.getElementById("mobile-cashflow-nav").hidden = false;
     document.getElementById("today-label").textContent = new Intl.DateTimeFormat("es", {
       weekday: "long",
@@ -1127,10 +1129,67 @@
     loadLedger();
   });
 
+  async function downloadExcel(params, button) {
+    setBusy(button, true, "Exportando…");
+    try {
+      let response = await rawRequest(`/loans/export-excel/?${params.toString()}`);
+      if (response.status === 401 && state.refresh && await refreshToken()) {
+        response = await rawRequest(`/loans/export-excel/?${params.toString()}`);
+      }
+      if (!response.ok) {
+        const errData = await response.json().catch(() => null);
+        throw new Error(errorMessage(errData, "No se pudo exportar el archivo Excel."));
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename="?([^"]+)"?/i);
+      const filename = match ? match[1] : `cartera_${params.get("period") || "day"}_${params.get("date") || localDateValue()}.xlsx`;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+      showToast("Archivo Excel descargado correctamente.");
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
   document.getElementById("ledger-filters").addEventListener("submit", (event) => {
     event.preventDefault();
     loadLedger();
   });
+
+  const ledgerExportBtn = document.getElementById("ledger-export-excel");
+  if (ledgerExportBtn) {
+    ledgerExportBtn.addEventListener("click", () => {
+      const form = document.getElementById("ledger-filters");
+      const params = new URLSearchParams({
+        period: form.elements.period.value || "day",
+        date: form.elements.date.value || localDateValue(),
+        frequency: form.elements.frequency.value || "all",
+      });
+      downloadExcel(params, ledgerExportBtn);
+    });
+  }
+
+  const cashExportBtn = document.getElementById("cash-export-excel");
+  if (cashExportBtn) {
+    cashExportBtn.addEventListener("click", () => {
+      const form = document.getElementById("cash-summary-filters");
+      const params = new URLSearchParams({
+        period: form.elements.period.value || "day",
+        date: form.elements.date.value || localDateValue(),
+        frequency: "all",
+      });
+      downloadExcel(params, cashExportBtn);
+    });
+  }
 
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-payment-loan]");
