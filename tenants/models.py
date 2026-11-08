@@ -2,6 +2,8 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from .validators import validate_timezone_name
+
 class BusinessType(models.Model):          # plantilla: barbería, restaurante...
     code = models.SlugField(unique=True)
     name = models.CharField(max_length=80)
@@ -20,7 +22,9 @@ class Tenant(models.Model):
     join_code = models.CharField(max_length=10, unique=True, default=generate_join_code, editable=False)
     business_type = models.ForeignKey(BusinessType, null=True, on_delete=models.SET_NULL)
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.TRIAL)
-    timezone = models.CharField(max_length=50, default="UTC")
+    timezone = models.CharField(
+        max_length=50, default="America/Bogota", validators=[validate_timezone_name]
+    )
     currency = models.CharField(max_length=3, default="COP")
     created_at = models.DateTimeField(auto_now_add=True)
 

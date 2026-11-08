@@ -1007,7 +1007,7 @@
       const loan = await api("/loans/", { method: "POST", body: JSON.stringify(data) });
       formElement.reset();
       syncOtherNeighborhood();
-      document.getElementById("start-date").value = new Date().toISOString().slice(0, 10);
+      document.getElementById("start-date").value = localDateValue();
       document.getElementById("preview-frequency").textContent =
         labels[document.getElementById("frequency").value];
       updateLoanEstimate();

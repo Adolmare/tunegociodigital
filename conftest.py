@@ -49,8 +49,10 @@ def pytest_configure(config):
 def two_tenants(db):
     user_a = User.objects.create(email="owner-a@example.test")
     user_b = User.objects.create(email="owner-b@example.test")
-    tenant_a = Tenant.objects.create(name="Empresa A", slug="empresa-a")
-    tenant_b = Tenant.objects.create(name="Empresa B", slug="empresa-b")
+    # UTC explícito: las pruebas calculan fechas con timezone.localdate() (UTC) y
+    # el valor por defecto de producción (America/Bogota) las haría depender de la hora.
+    tenant_a = Tenant.objects.create(name="Empresa A", slug="empresa-a", timezone="UTC")
+    tenant_b = Tenant.objects.create(name="Empresa B", slug="empresa-b", timezone="UTC")
     _set_rls_context(user_a.pk, tenant_a.pk)
     Membership.objects.create(user=user_a, tenant=tenant_a, role=Membership.Role.OWNER)
     _set_rls_context(user_b.pk, tenant_b.pk)

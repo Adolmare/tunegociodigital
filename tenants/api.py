@@ -1,7 +1,9 @@
 import uuid
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.core.exceptions import ValidationError
 from django.db import connection
+from django.utils import timezone
 from rest_framework import serializers, viewsets
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import BasePermission, IsAuthenticated
@@ -11,6 +13,14 @@ from core.context import get_tenant
 from .models import Membership, TenantTool
 
 RANK = {"employee": 1, "manager": 2, "admin": 3, "owner": 4}
+
+
+def tenant_timezone(tenant):
+    """Zona horaria del negocio; si es inválida se usa la del proyecto (UTC)."""
+    try:
+        return ZoneInfo(tenant.timezone)
+    except (ZoneInfoNotFoundError, ValueError, TypeError, OSError):
+        return timezone.get_default_timezone()
 
 
 def set_database_context(user_id, tenant_id=None):
@@ -46,6 +56,8 @@ class TenantContextMixin:
         request.tenant = membership.tenant
         request.membership = membership
         set_tenant(membership.tenant)
+        # Fechas y cortes diarios (localdate, __date) siguen el día del negocio.
+        timezone.activate(tenant_timezone(membership.tenant))
         super().initial(request, *args, **kwargs)
 
     def dispatch(self, request, *args, **kwargs):
@@ -53,6 +65,7 @@ class TenantContextMixin:
             return super().dispatch(request, *args, **kwargs)
         finally:
             clear_tenant()
+            timezone.deactivate()
 
 
 class HasTool(BasePermission):
