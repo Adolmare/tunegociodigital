@@ -29,6 +29,32 @@ def postgres_environment(database_url):
     return result
 
 
+def upload_to_r2(backup_file: Path, checksum_file: Path):
+    account_id = os.environ.get("R2_ACCOUNT_ID", "").strip()
+    access_key = os.environ.get("R2_ACCESS_KEY_ID", "").strip()
+    secret_key = os.environ.get("R2_SECRET_ACCESS_KEY", "").strip()
+    bucket_name = os.environ.get("R2_BUCKET_NAME", "").strip()
+    if not all([account_id, access_key, secret_key, bucket_name]):
+        return False
+
+    import boto3
+    from botocore.config import Config
+
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=f"https://{account_id}.r2.cloudflarestorage.com",
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        region_name="auto",
+        config=Config(signature_version="s3v4"),
+    )
+    for file_path in (backup_file, checksum_file):
+        key = f"backups/{file_path.name}"
+        s3.upload_file(str(file_path), bucket_name, key)
+        print(f"Subido a Cloudflare R2: s3://{bucket_name}/{key}")
+    return True
+
+
 def main():
     database_url = os.environ.get("MIGRATOR_DATABASE_URL")
     if not database_url:
@@ -61,7 +87,10 @@ def main():
     os.chmod(checksum_path, 0o600)
     print(f"Backup creado: {backup_path}")
     print(f"SHA-256: {digest}")
-    print("Copia el dump y su checksum a almacenamiento externo antes de terminar.")
+    if upload_to_r2(backup_path, checksum_path):
+        print("Backup sincronizado exitosamente en Cloudflare R2.")
+    else:
+        print("Copia el dump y su checksum a almacenamiento externo (o configura R2_*) antes de terminar.")
 
 
 if __name__ == "__main__":

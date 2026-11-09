@@ -1,8 +1,11 @@
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import never_cache
 from django.views.generic import TemplateView
 
 from customers.neighborhoods import NEIGHBORHOODS
 
 
+@method_decorator(never_cache, name="dispatch")
 class LoanPortalView(TemplateView):
     template_name = "loans/portal.html"
 

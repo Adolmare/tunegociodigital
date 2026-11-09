@@ -1,16 +1,19 @@
 from django.db import connection
-from django.db import transaction
-from rest_framework import generics, permissions, status
-from rest_framework.exceptions import ValidationError
+from rest_framework import generics, permissions
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 
-from tenants.api import set_database_context
-from tenants.models import EmployeeJoinRequest, Membership, Tenant
+from tenants.join_requests import TenantJoinRequestCreateAPIView
+from tenants.models import Membership
 
-from .serializers import MeSerializer, MyMembershipSerializer, RegisterSerializer
+from .serializers import (
+    LoginSerializer,
+    MeSerializer,
+    MyMembershipSerializer,
+    RegisterSerializer,
+)
 
 
 class RegisterAPIView(generics.CreateAPIView):
@@ -22,6 +25,7 @@ class RegisterAPIView(generics.CreateAPIView):
 
 class LoginAPIView(TokenObtainPairView):
     permission_classes = [permissions.AllowAny]
+    serializer_class = LoginSerializer
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "login"
 
@@ -57,30 +61,5 @@ class MyTenantsAPIView(generics.GenericAPIView):
 class JoinBusinessAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    @transaction.atomic
-    def post(self, request):
-        business_id = request.data.get("business_id")
-        if not business_id:
-            raise ValidationError({"business_id": "Ingresa el ID del negocio."})
-        set_database_context(request.user.pk)
-        try:
-            tenant = Tenant.objects.get(pk=business_id, status__in=["trial", "active"])
-        except (Tenant.DoesNotExist, ValueError, TypeError):
-            raise ValidationError({"business_id": "No encontramos un negocio activo con ese ID."})
-        set_database_context(request.user.pk, tenant.pk)
-        if Membership.objects.filter(user=request.user, tenant=tenant, is_active=True).exists():
-            raise ValidationError({"business_id": "Ya formas parte de este negocio."})
-        join_request, created = EmployeeJoinRequest.objects.get_or_create(
-            user=request.user,
-            tenant=tenant,
-            status=EmployeeJoinRequest.Status.PENDING,
-        )
-        return Response(
-            {
-                "id": join_request.pk,
-                "tenant_name": tenant.name,
-                "status": join_request.status,
-                "created": created,
-            },
-            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
-        )
+    def post(self, request, *args, **kwargs):
+        return TenantJoinRequestCreateAPIView().post(request)

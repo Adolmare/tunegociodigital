@@ -51,14 +51,20 @@ que el propietario de las tablas ignore las políticas RLS.
 
 ## Documentos en Cloudflare R2
 
-Los documentos usan el storage S3-compatible de R2 con URLs firmadas; no se
-sirven desde el disco efímero de Render.
+Si no configuras Cloudflare R2, el servicio arranca con `FileSystemStorage` y
+emite una advertencia (`RuntimeWarning` y `core.W001` en `manage.py check --deploy`):
+en Render el disco del contenedor es **efímero**, por lo que cualquier archivo
+subido se perderá en cada despliegue o reinicio. Si configuras solo algunas de
+las variables `R2_*`, el servicio se negará a arrancar (`ImproperlyConfigured`)
+para evitar configuraciones parciales silenciosas.
+
+Para almacenamiento persistente de documentos con URLs firmadas:
 
 1. Crea un bucket privado en Cloudflare R2.
 2. Crea una API token limitada a lectura/escritura de objetos de ese bucket.
    Usa el Access Key ID y Secret Access Key de esa token, no una Global API Key.
-3. Configura `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` y
-   `R2_BUCKET_NAME` en Render. El servicio se negará a arrancar si falta alguno.
+3. Configura las cuatro variables `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
+   `R2_SECRET_ACCESS_KEY` y `R2_BUCKET_NAME` en Render.
 4. No hagas público el bucket ni habilites dominios públicos: el backend genera
    URLs firmadas para acceder a los archivos.
 

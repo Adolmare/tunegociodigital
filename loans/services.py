@@ -97,7 +97,20 @@ def create_loan(
     if customer is not None and customer_details is not None:
         raise ValidationError({"customer": "Envía un cliente existente o uno nuevo, no ambos."})
     if customer_details is not None:
-        customer = Customer.objects.create(tenant=tenant, **customer_details)
+        doc_id = (customer_details.get("document_id") or "").strip()
+        existing = (
+            Customer.objects.filter(document_id=doc_id, deleted_at__isnull=True).first()
+            if doc_id
+            else None
+        )
+        if existing is not None:
+            for field_name in ("full_name", "neighborhood", "phone"):
+                if customer_details.get(field_name):
+                    setattr(existing, field_name, customer_details[field_name])
+            existing.save()
+            customer = existing
+        else:
+            customer = Customer.objects.create(tenant=tenant, **customer_details)
 
     principal = _money(principal)
     interest_rate = Decimal(interest_rate)
@@ -300,6 +313,7 @@ def register_payment(*, loan, collector, amount, method="cash", user=None):
         user_id=str(user.pk) if user is not None else None,
         loan_id=str(loan.pk),
         payment_id=str(payment.pk),
+        collector_id=str(collector.pk),
         amount=str(amount),
         balance=str(loan.balance),
     )
@@ -361,6 +375,7 @@ def reverse_payment(*, payment, user):
         loan_id=str(loan.pk),
         payment_id=str(payment.pk),
         reversal_id=str(reversal.pk),
+        collector_id=str(payment.collector_id) if payment.collector_id else None,
         amount=str(reversal.amount),
         balance=str(loan.balance),
     )

@@ -8,11 +8,11 @@ from decimal import Decimal
 from asgiref.sync import sync_to_async
 from django.db import transaction
 from django.db.models import Case, DecimalField, F, Q, Sum, When
-from django.http import StreamingHttpResponse
+from django.http import HttpResponse, StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -29,19 +29,10 @@ from tenants.api import (
 
 from employees.models import Employee
 
-from .models import (
-    CollectionRoute,
-    CollectorDailyClose,
-    CollectorExpense,
-    Loan,
-    LoanInstallment,
-    LoanPayment,
-    RouteStop,
-)
+from .excel_export import build_loans_excel_workbook
+from .models import CollectionRoute, Loan, LoanInstallment, LoanPayment, RouteStop
 from .serializers import (
     CollectionRouteSerializer,
-    CollectorDailyCloseSerializer,
-    CollectorExpenseSerializer,
     LoanLedgerQuerySerializer,
     LoanInstallmentSerializer,
     LoanPaymentSerializer,
@@ -57,17 +48,25 @@ from .services import (
 )
 
 
-def _read_payment_events(user_id, tenant_id, cursor):
+def _read_payment_events(user_id, tenant_id, cursor, collector_id=None):
+    """Lee eventos de pagos del negocio.
+
+    Si ``collector_id`` viene informado (empleados), solo devuelve los eventos
+    cuyo cobrador coincide; los roles de gestión ven todos los del negocio.
+    """
     with transaction.atomic():
         set_database_context(user_id, tenant_id)
+        queryset = EventInbox.unscoped.filter(
+            tenant_id=tenant_id,
+            event_name__in=["loan.payment_received", "loan.payment_reversed"],
+            occurred_at__gte=cursor,
+        )
+        if collector_id is not None:
+            queryset = queryset.filter(payload__collector_id=str(collector_id))
         return list(
-            EventInbox.unscoped.filter(
-                tenant_id=tenant_id,
-                event_name="loan.payment_received",
-                occurred_at__gte=cursor,
-            )
-            .order_by("occurred_at", "id")
-            .values("id", "occurred_at", "payload")[:100]
+            queryset.order_by("occurred_at", "id").values(
+                "id", "occurred_at", "event_name", "payload"
+            )[:100]
         )
 
 
@@ -79,8 +78,8 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
         "retrieve": "employee",
         "create": "employee",
         "collection_today": "employee",
-        "collector_summary": "employee",
         "ledger": "owner",
+        "export_excel": "manager",
         "destroy": "owner",
         "update": "manager",
         "partial_update": "manager",
@@ -88,7 +87,11 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
     serializer_class = LoanSerializer
 
     def get_queryset(self):
-        queryset = Loan.objects.all()
+        queryset = Loan.objects.select_related("customer", "collector").prefetch_related(
+            "schedule",
+            "payments__collector",
+            "payments__reversals",
+        )
         if self.request.membership.role == "employee":
             queryset = queryset.filter(collector__user=self.request.user)
         return queryset
@@ -132,84 +135,21 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
             return self.get_paginated_response(data)
         return Response(LoanInstallmentSerializer(installments, many=True).data)
 
-    @action(detail=False, methods=["get"], url_path="collector-summary")
-    def collector_summary(self, request):
-        period = request.query_params.get("period", "day")
-        selected_date = request.query_params.get("date") or timezone.localdate().isoformat()
-        filters = LoanLedgerQuerySerializer(data={
-            "period": period,
-            "date": selected_date,
-        })
-        filters.is_valid(raise_exception=True)
-        period_start, period_end = ledger_period_dates(
-            filters.validated_data["period"],
-            filters.validated_data["date"],
-        )
-        employees = Employee.objects.filter(is_active=True, deleted_at__isnull=True)
-        if request.membership.role == "employee":
-            employees = employees.filter(user=request.user)
-        results = []
-        for employee in employees:
-            payments = LoanPayment.objects.filter(
-                collector=employee,
-                paid_at__date__gte=period_start,
-                paid_at__date__lte=period_end,
-            ).aggregate(total=Sum(
-                Case(
-                    When(direction="reversal", then=-F("amount")),
-                    default=F("amount"),
-                    output_field=DecimalField(max_digits=14, decimal_places=2),
-                )
-            ))["total"] or Decimal("0.00")
-            expenses = CollectorExpense.objects.filter(
-                collector=employee,
-                date__gte=period_start,
-                date__lte=period_end,
-            ).aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
-            loans_issued = Loan.objects.filter(
-                collector=employee,
-                start_date__gte=period_start,
-                start_date__lte=period_end,
-            ).aggregate(total=Sum("principal"))["total"] or Decimal("0.00")
-            close_totals = CollectorDailyClose.objects.filter(
-                collector=employee,
-                date__gte=period_start,
-                date__lte=period_end,
-            ).aggregate(
-                opening_cash=Sum("opening_cash"),
-                paperwork=Sum("paperwork_amount"),
-            )
-            opening_cash = close_totals["opening_cash"] or Decimal("0.00")
-            paperwork = close_totals["paperwork"] or Decimal("0.00")
-            results.append({
-                "collector_id": str(employee.pk),
-                "collector": employee.full_name,
-                "opening_cash": str(opening_cash),
-                "collected": str(payments),
-                "expenses": str(expenses),
-                "loans_issued": str(loans_issued),
-                "paperwork": str(paperwork),
-                "cash_balance": str(opening_cash + payments - expenses - loans_issued + paperwork),
-            })
-        totals = {
-            key: sum((Decimal(row[key]) for row in results), Decimal("0.00"))
-            for key in ("opening_cash", "collected", "expenses", "loans_issued", "paperwork", "cash_balance")
-        }
-        return Response({
-            "period": period,
-            "period_start": period_start.isoformat(),
-            "period_end": period_end.isoformat(),
-            "collectors": results,
-            "totals": {key: str(value) for key, value in totals.items()},
-        })
-
-    @action(detail=False, methods=["get"])
-    def ledger(self, request):
+    def _compute_ledger(self, request):
         filters = LoanLedgerQuerySerializer(data=request.query_params)
         filters.is_valid(raise_exception=True)
         period = filters.validated_data["period"]
         selected_date = filters.validated_data["date"]
-        frequency = filters.validated_data["frequency"]
+        raw_frequency = request.query_params.get("frequency")
+        frequency = filters.validated_data.get("frequency")
+        period_to_frequency = {
+            "day": "daily",
+            "week": "weekly",
+            "fortnight": "biweekly",
+            "month": "monthly",
+        }
+        if (not raw_frequency or raw_frequency == "auto") and period in period_to_frequency:
+            frequency = period_to_frequency[period]
         period_start, period_end = ledger_period_dates(period, selected_date)
 
         loans = list(Loan.objects.select_related("customer"))
@@ -335,6 +275,19 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
             totals["remaining"] += remaining
 
         rows.sort(key=lambda row: row["item"])
+        return {
+            "period": period,
+            "selected_date": selected_date,
+            "period_start": period_start,
+            "period_end": period_end,
+            "frequency": frequency,
+            "rows": rows,
+            "totals": totals,
+        }
+
+    @action(detail=False, methods=["get"])
+    def ledger(self, request):
+        report = self._compute_ledger(request)
         data = [
             {
                 **row,
@@ -344,18 +297,37 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
                     if isinstance(value, Decimal)
                 },
             }
-            for row in rows
+            for row in report["rows"]
         ]
         return Response(
             {
-                "period": period,
-                "period_start": period_start.isoformat(),
-                "period_end": period_end.isoformat(),
-                "frequency": frequency,
+                "period": report["period"],
+                "period_start": report["period_start"].isoformat(),
+                "period_end": report["period_end"].isoformat(),
+                "frequency": report["frequency"],
                 "rows": data,
-                "totals": {key: str(value) for key, value in totals.items()},
+                "totals": {key: str(value) for key, value in report["totals"].items()},
             }
         )
+
+    @action(detail=False, methods=["get"], url_path="export-excel")
+    def export_excel(self, request):
+        report = self._compute_ledger(request)
+        xlsx_bytes = build_loans_excel_workbook(
+            tenant=request.tenant,
+            period=report["period"],
+            period_start=report["period_start"],
+            period_end=report["period_end"],
+            ledger_rows=report["rows"],
+            ledger_totals=report["totals"],
+        )
+        filename = f"cartera_{request.tenant.slug}_{report['period']}_{report['selected_date'].isoformat()}.xlsx"
+        response = HttpResponse(
+            xlsx_bytes,
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
 
 
 class LoanPaymentViewSet(ActionMinRoleMixin, TenantViewSet):
@@ -412,10 +384,23 @@ class LoanPaymentViewSet(ActionMinRoleMixin, TenantViewSet):
         )
 
 
+class _SSEStreamingHttpResponse(StreamingHttpResponse):
+    """StreamingHttpResponse para SSE compatible con ASGI y con WSGI (manage.py runserver)."""
+
+    def __init__(self, streaming_content=(), *args, sync_streaming_content=None, **kwargs):
+        super().__init__(streaming_content, *args, **kwargs)
+        self._sync_streaming_content = sync_streaming_content
+
+    def __iter__(self):
+        if self._sync_streaming_content is not None:
+            return map(self.make_bytes, self._sync_streaming_content())
+        return super().__iter__()
+
+
 class LoanPaymentEventStreamView(TenantContextMixin, APIView):
     permission_classes = [IsAuthenticated, HasTool, HasRole]
     required_tool = "loans"
-    min_role = "admin"
+    min_role = "employee"
     http_method_names = ["get", "options"]
 
     def get(self, request):
@@ -445,6 +430,16 @@ class LoanPaymentEventStreamView(TenantContextMixin, APIView):
         tenant_id = str(request.tenant.pk)
         user_id = str(request.user.pk)
 
+        # Los empleados solo reciben los eventos de sus propios cobros.
+        collector_id = None
+        if request.membership.role == "employee":
+            collector = Employee.objects.filter(
+                user=request.user, is_active=True, deleted_at__isnull=True
+            ).first()
+            if collector is None:
+                raise PermissionDenied("No tienes un perfil de cobrador activo.")
+            collector_id = str(collector.pk)
+
         async def stream():
             nonlocal cursor
             yield "event: ready\ndata: {}\n\n"
@@ -453,7 +448,7 @@ class LoanPaymentEventStreamView(TenantContextMixin, APIView):
                 events = await sync_to_async(
                     _read_payment_events,
                     thread_sensitive=True,
-                )(user_id, tenant_id, cursor)
+                )(user_id, tenant_id, cursor, collector_id)
 
                 for event in events:
                     occurred_at = event["occurred_at"]
@@ -469,9 +464,10 @@ class LoanPaymentEventStreamView(TenantContextMixin, APIView):
                         "payload": event["payload"],
                     }
                     event_id = f"{occurred_at.isoformat()}|{event['id']}"
+                    event_type = event.get("event_name", "loan.payment_received")
                     yield (
                         f"id: {event_id}\n"
-                        "event: loan.payment_received\n"
+                        f"event: {event_type}\n"
                         f"data: {json.dumps(data, separators=(',', ':'))}\n\n"
                     )
 
@@ -480,7 +476,37 @@ class LoanPaymentEventStreamView(TenantContextMixin, APIView):
                     last_heartbeat = time.monotonic()
                 await asyncio.sleep(1)
 
-        response = StreamingHttpResponse(stream(), content_type="text/event-stream")
+        def sync_stream():
+            nonlocal cursor
+            ready_id = last_event_id or f"{cursor.isoformat()}|00000000-0000-0000-0000-000000000000"
+            yield f"id: {ready_id}\nevent: ready\ndata: {{}}\n\n"
+            events = _read_payment_events(user_id, tenant_id, cursor, collector_id)
+            for event in events:
+                occurred_at = event["occurred_at"]
+                if occurred_at > cursor:
+                    cursor = occurred_at
+                    seen_event_ids.clear()
+                if event["id"] in seen_event_ids:
+                    continue
+                seen_event_ids.add(event["id"])
+                data = {
+                    "id": str(event["id"]),
+                    "occurred_at": occurred_at.isoformat(),
+                    "payload": event["payload"],
+                }
+                event_id = f"{occurred_at.isoformat()}|{event['id']}"
+                event_type = event.get("event_name", "loan.payment_received")
+                yield (
+                    f"id: {event_id}\n"
+                    f"event: {event_type}\n"
+                    f"data: {json.dumps(data, separators=(',', ':'))}\n\n"
+                )
+
+        response = _SSEStreamingHttpResponse(
+            stream(),
+            sync_streaming_content=sync_stream,
+            content_type="text/event-stream",
+        )
         response["Cache-Control"] = "no-cache"
         response["X-Accel-Buffering"] = "no"
         return response
@@ -537,93 +563,4 @@ class RouteStopViewSet(ActionMinRoleMixin, TenantViewSet):
         return queryset
 
 
-class CollectorDailyCloseViewSet(ActionMinRoleMixin, TenantViewSet):
-    required_tool = "loans"
-    min_role = "manager"
-    role_by_action = {
-        "list": "employee",
-        "retrieve": "employee",
-        "create": "employee",
-        "update": "employee",
-        "partial_update": "employee",
-    }
-    serializer_class = CollectorDailyCloseSerializer
-
-    def get_queryset(self):
-        queryset = CollectorDailyClose.objects.select_related("collector")
-        if self.request.membership.role == "employee":
-            queryset = queryset.filter(collector__user=self.request.user)
-        return queryset
-
-    def perform_create(self, serializer):
-        collector = self._collector(serializer.validated_data.get("collector"))
-        close, created = CollectorDailyClose.objects.get_or_create(
-            tenant=self.request.tenant,
-            collector=collector,
-            date=serializer.validated_data["date"],
-            defaults={
-                "opening_cash": serializer.validated_data["opening_cash"],
-                "paperwork_amount": serializer.validated_data["paperwork_amount"],
-            },
-        )
-        if not created:
-            close.opening_cash = serializer.validated_data["opening_cash"]
-            close.paperwork_amount = serializer.validated_data["paperwork_amount"]
-            close.save(update_fields=["opening_cash", "paperwork_amount", "updated_at"])
-        serializer.instance = close
-
-    def perform_update(self, serializer):
-        instance = self.get_object()
-        collector = self._collector(serializer.validated_data.get("collector", instance.collector))
-        serializer.save(collector=collector)
-
-    def _collector(self, requested):
-        if self.request.membership.role == "employee":
-            requested = Employee.objects.filter(
-                user=self.request.user,
-                is_active=True,
-                deleted_at__isnull=True,
-            ).first()
-        if requested is None or requested.tenant_id != self.request.tenant.pk:
-            raise ValidationError({"collector": "Selecciona un cobrador activo del negocio."})
-        return requested
-
-
-class CollectorExpenseViewSet(ActionMinRoleMixin, TenantViewSet):
-    required_tool = "loans"
-    min_role = "manager"
-    role_by_action = {
-        "list": "employee",
-        "retrieve": "employee",
-        "create": "employee",
-        "update": "employee",
-        "partial_update": "employee",
-        "destroy": "manager",
-    }
-    serializer_class = CollectorExpenseSerializer
-
-    def get_queryset(self):
-        queryset = CollectorExpense.objects.select_related("collector")
-        if self.request.membership.role == "employee":
-            queryset = queryset.filter(collector__user=self.request.user)
-        return queryset
-
-    def perform_create(self, serializer):
-        collector = self._collector(serializer.validated_data.get("collector"))
-        serializer.save(tenant=self.request.tenant, collector=collector)
-
-    def perform_update(self, serializer):
-        instance = self.get_object()
-        collector = self._collector(serializer.validated_data.get("collector", instance.collector))
-        serializer.save(collector=collector)
-
-    def _collector(self, requested):
-        if self.request.membership.role == "employee":
-            requested = Employee.objects.filter(
-                user=self.request.user,
-                is_active=True,
-                deleted_at__isnull=True,
-            ).first()
-        if requested is None or requested.tenant_id != self.request.tenant.pk:
-            raise ValidationError({"collector": "Selecciona un cobrador activo del negocio."})
-        return requested
+from .cashflow import CollectorDailyCashViewSet as CollectorDailyCloseViewSet

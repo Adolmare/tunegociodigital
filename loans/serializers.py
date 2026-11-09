@@ -12,12 +12,9 @@ from employees.models import Employee
 
 from .models import (
     CollectionRoute,
-    CollectorDailyClose,
-    CollectorExpense,
     Loan,
     LoanInstallment,
     LoanPayment,
-    PaymentAllocation,
     RouteStop,
 )
 
@@ -58,27 +55,29 @@ class LoanCustomerInputSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Customer
-        fields = ("full_name", "document_id", "neighborhood", "location")
+        fields = ("full_name", "document_id", "phone", "neighborhood", "location")
         extra_kwargs = {
             "full_name": {"required": True},
             "document_id": {"required": True, "allow_blank": False},
+            "phone": {"required": False, "allow_blank": True},
             "neighborhood": {"required": True, "allow_blank": False},
         }
 
 
 class LoanInstallmentSerializer(serializers.ModelSerializer):
     customer_name = serializers.CharField(source="loan.customer.full_name", read_only=True)
+    customer_phone = serializers.CharField(source="loan.customer.phone", read_only=True)
     document_id = serializers.CharField(source="loan.customer.document_id", read_only=True)
     neighborhood = serializers.CharField(source="loan.customer.neighborhood", read_only=True)
+    loan_balance = serializers.DecimalField(
+        source="loan.balance", max_digits=14, decimal_places=2, read_only=True
+    )
     is_open_ended = serializers.BooleanField(source="loan.is_open_ended", read_only=True)
     frequency = serializers.CharField(source="loan.frequency", read_only=True)
     location = GeometryField(source="loan.customer.location", read_only=True)
     pending_amount = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
-    principal_due = serializers.SerializerMethodField()
-    interest_due = serializers.SerializerMethodField()
-    payment_history = serializers.SerializerMethodField()
 
     def get_pending_amount(self, obj):
         return obj.amount_due - obj.amount_paid
@@ -95,33 +94,6 @@ class LoanInstallmentSerializer(serializers.ModelSerializer):
             return "partial"
         return "pending"
 
-    def get_principal_due(self, obj):
-        loan = obj.loan
-        base_cents, remainder = divmod(int(loan.principal * 100), loan.installments)
-        return Decimal(base_cents + (1 if obj.number <= remainder else 0)) / 100
-
-    def get_interest_due(self, obj):
-        return obj.amount_due - self.get_principal_due(obj)
-
-    def get_payment_history(self, obj):
-        allocations = PaymentAllocation.objects.filter(
-            installment=obj,
-        ).select_related("payment", "payment__collector").order_by("payment__paid_at", "payment_id")
-        return [
-            {
-                "payment_id": str(allocation.payment_id),
-                "paid_at": allocation.payment.paid_at.isoformat(),
-                "amount": str(
-                    -allocation.amount
-                    if allocation.payment.direction == "reversal"
-                    else allocation.amount
-                ),
-                "direction": allocation.payment.direction,
-                "collector": allocation.payment.collector.full_name,
-            }
-            for allocation in allocations
-        ]
-
     class Meta:
         model = LoanInstallment
         exclude = ("tenant",)
@@ -135,9 +107,6 @@ class LoanInstallmentSerializer(serializers.ModelSerializer):
             "amount_due",
             "amount_paid",
             "status",
-            "principal_due",
-            "interest_due",
-            "payment_history",
         )
 
 
@@ -145,7 +114,9 @@ class LoanSerializer(serializers.ModelSerializer):
     customer = TenantScopedRelatedField(required=False, allow_null=True)
     customer_details = LoanCustomerInputSerializer(write_only=True, required=False)
     collector = TenantScopedRelatedField(required=False, allow_null=True)
+    collector_name = serializers.CharField(source="collector.full_name", read_only=True, default="")
     customer_name = serializers.CharField(source="customer.full_name", read_only=True)
+    customer_phone = serializers.CharField(source="customer.phone", read_only=True)
     document_id = serializers.CharField(source="customer.document_id", read_only=True)
     neighborhood = serializers.CharField(source="customer.neighborhood", read_only=True)
     location = GeometryField(source="customer.location", read_only=True)
@@ -155,6 +126,7 @@ class LoanSerializer(serializers.ModelSerializer):
         many=True,
         read_only=True,
     )
+    payment_history = serializers.SerializerMethodField()
     principal = serializers.DecimalField(
         max_digits=14,
         decimal_places=2,
@@ -248,6 +220,21 @@ class LoanSerializer(serializers.ModelSerializer):
         ).exists():
             return "delinquent"
         return obj.status
+
+    def get_payment_history(self, obj):
+        payments = obj.payments.all()
+        return [
+            {
+                "id": str(payment.id),
+                "date": timezone.localtime(payment.paid_at).date().isoformat(),
+                "amount": f"{(-payment.amount if payment.direction == 'reversal' else payment.amount):.2f}",
+                "direction": payment.direction,
+                "method": payment.method,
+                "collector_name": payment.collector.full_name if payment.collector else "",
+                "is_reversed": payment.direction == "payment" and bool(payment.reversals.all()),
+            }
+            for payment in payments
+        ]
 
     class Meta:
         model = Loan
@@ -345,40 +332,3 @@ class RouteStopSerializer(serializers.ModelSerializer):
         model = RouteStop
         exclude = ("tenant",)
         read_only_fields = ("id", "created_at", "updated_at")
-
-
-class CollectorDailyCloseSerializer(serializers.ModelSerializer):
-    collector = TenantScopedRelatedField(required=False)
-    collector_name = serializers.CharField(source="collector.full_name", read_only=True)
-    opening_cash = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.00"))
-    paperwork_amount = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.00"))
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields["collector"].queryset = Employee.objects.filter(
-            is_active=True,
-            deleted_at__isnull=True,
-        )
-
-    class Meta:
-        model = CollectorDailyClose
-        exclude = ("tenant",)
-        read_only_fields = ("id", "created_at", "updated_at", "collector_name")
-
-
-class CollectorExpenseSerializer(serializers.ModelSerializer):
-    collector = TenantScopedRelatedField(required=False)
-    collector_name = serializers.CharField(source="collector.full_name", read_only=True)
-    amount = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.01"))
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields["collector"].queryset = Employee.objects.filter(
-            is_active=True,
-            deleted_at__isnull=True,
-        )
-
-    class Meta:
-        model = CollectorExpense
-        exclude = ("tenant",)
-        read_only_fields = ("id", "created_at", "updated_at", "collector_name")

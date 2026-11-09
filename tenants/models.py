@@ -2,10 +2,16 @@ import uuid
 from django.conf import settings
 from django.db import models
 
+from .validators import validate_timezone_name
+
 class BusinessType(models.Model):          # plantilla: barbería, restaurante...
     code = models.SlugField(unique=True)
     name = models.CharField(max_length=80)
     tools = models.ManyToManyField("Tool", blank=True)   # herramientas por defecto
+
+def generate_join_code():
+    return uuid.uuid4().hex[:10].upper()
+
 
 class Tenant(models.Model):
     class Status(models.TextChoices):
@@ -13,9 +19,12 @@ class Tenant(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=150)
     slug = models.SlugField(unique=True)
+    join_code = models.CharField(max_length=10, unique=True, default=generate_join_code, editable=False)
     business_type = models.ForeignKey(BusinessType, null=True, on_delete=models.SET_NULL)
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.TRIAL)
-    timezone = models.CharField(max_length=50, default="UTC")
+    timezone = models.CharField(
+        max_length=50, default="America/Bogota", validators=[validate_timezone_name]
+    )
     currency = models.CharField(max_length=3, default="COP")
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -29,44 +38,6 @@ class Membership(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     class Meta:
         constraints = [models.UniqueConstraint(fields=["user", "tenant"], name="uniq_user_tenant")]
-
-
-class EmployeeJoinRequest(models.Model):
-    class Status(models.TextChoices):
-        PENDING = "pending", "Pendiente"
-        APPROVED = "approved", "Aprobada"
-        REJECTED = "rejected", "Rechazada"
-
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="employee_join_requests",
-    )
-    tenant = models.ForeignKey(
-        Tenant,
-        on_delete=models.CASCADE,
-        related_name="employee_join_requests",
-    )
-    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
-    reviewed_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="reviewed_employee_join_requests",
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    reviewed_at = models.DateTimeField(null=True, blank=True)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["user", "tenant"],
-                condition=models.Q(status="pending"),
-                name="uniq_pending_employee_join_request",
-            ),
-        ]
-
 
 class Tool(models.Model):                  # catalog, reservations, deliveries, loans, accounting
     code = models.SlugField(unique=True)
@@ -93,3 +64,35 @@ class TenantApiKey(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["tenant", "name"], name="uniq_tenant_apikey_name")]
+
+
+class TenantJoinRequest(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pendiente"
+        ACCEPTED = "accepted", "Aceptada"
+        REJECTED = "rejected", "Rechazada"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tenant = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name="join_requests")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="tenant_join_requests")
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="reviewed_tenant_join_requests",
+    )
+
+    class Meta:
+        ordering = ["created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tenant", "user"],
+                condition=models.Q(status="pending"),
+                name="uniq_pending_tenant_join_request",
+            ),
+        ]
+
+
+# Alias for compatibility with EmployeeJoinRequest
+EmployeeJoinRequest = TenantJoinRequest

@@ -1,4 +1,4 @@
-﻿import pytest
+import pytest
 from asgiref.sync import async_to_sync, sync_to_async
 from decimal import Decimal
 from datetime import date, timedelta
@@ -38,6 +38,11 @@ def test_loans_frontend_renders_mobile_portal(client):
     assert b"Usar GPS" not in response.content
     assert b"portal.css" in response.content
     assert b"portal.js" in response.content
+    assert b'id="excel-export-dialog"' in response.content
+    assert b'id="loan-manage-dialog"' in response.content
+    assert b'id="existing-customer-select"' in response.content
+    assert b'id="loan-collector-filter"' in response.content
+    assert b'id="customer-phone"' in response.content
 
 
 @pytest.mark.parametrize(
@@ -105,6 +110,35 @@ def test_owner_ledger_reports_period_payments_and_is_owner_only(
     Membership.objects.create(user=manager, tenant=tenant, role=Membership.Role.MANAGER)
     manager_response = client_for(manager, tenant).get(reverse("loan-ledger"))
     assert manager_response.status_code == status.HTTP_403_FORBIDDEN
+
+    # Filtro automático por concepto según período cuando no se especifica frecuencia
+    day_response = client_for(owner, tenant).get(
+        reverse("loan-ledger"),
+        {"period": "day", "date": timezone.localdate().isoformat()},
+    )
+    assert day_response.status_code == status.HTTP_200_OK
+    assert len(day_response.data["rows"]) == 1
+    assert day_response.data["rows"][0]["concept"] == "DIARIO"
+
+    # Si se pide período semanal sin frecuencia, no debe incluir préstamos diarios
+    week_response = client_for(owner, tenant).get(
+        reverse("loan-ledger"),
+        {"period": "week", "date": timezone.localdate().isoformat()},
+    )
+    assert week_response.status_code == status.HTTP_200_OK
+    assert len(week_response.data["rows"]) == 0
+
+    # Pero si se especifica explícitamente frequency=all, sí se incluyen todos
+    all_response = client_for(owner, tenant).get(
+        reverse("loan-ledger"),
+        {
+            "period": "week",
+            "date": timezone.localdate().isoformat(),
+            "frequency": "all",
+        },
+    )
+    assert all_response.status_code == status.HTTP_200_OK
+    assert len(all_response.data["rows"]) == 1
 
 
 def _make_employee_and_customer(two_tenants, rls_context, tenant_key="tenant_a"):
@@ -457,7 +491,8 @@ def test_owner_and_admin_receive_live_payment_events(
 
     stream_url = reverse("loan-payment-events-stream")
     employee_client = client_for(employee_user, tenant)
-    assert employee_client.get(stream_url).status_code == status.HTTP_403_FORBIDDEN
+    assert employee_client.get(stream_url).status_code == status.HTTP_200_OK
+    assert client_for(two_tenants["user_b"], tenant).get(stream_url).status_code == status.HTTP_404_NOT_FOUND
 
     def make_stream_response(user):
         request = APIRequestFactory().get(
