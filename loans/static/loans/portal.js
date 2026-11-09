@@ -377,7 +377,7 @@
     document.getElementById("new-loan-nav").hidden = isEmployee;
     document.getElementById("mobile-add-button").hidden = isEmployee;
     document.getElementById("desktop-new-button").hidden = isEmployee;
-    document.getElementById("home-portfolio-card").hidden = isEmployee;
+    document.getElementById("home-portfolio-card").hidden = false;
     document.getElementById("home-loans-section").hidden = isEmployee;
     document.getElementById("home-collections-section").hidden = !isEmployee;
     document.getElementById("cash-opening-section").hidden = isEmployee;
@@ -464,6 +464,30 @@
     expenseSelect.required = manager;
   }
 
+  function computeCollectedToday() {
+    const todayStr = localDateValue();
+    const byCustomerLoan = [];
+    let totalCollectedToday = 0;
+    state.loans.forEach((loan) => {
+      const paymentsToday = (loan.payment_history || []).filter(
+        (p) => p.date === todayStr && p.direction === "payment" && !p.is_reversed
+      );
+      if (!paymentsToday.length) return;
+      const sumToday = paymentsToday.reduce((acc, p) => acc + Number(p.amount || 0), 0);
+      totalCollectedToday += sumToday;
+      byCustomerLoan.push({
+        loan,
+        customer_name: loan.customer_name || "Cliente",
+        customer_phone: loan.customer_phone || "",
+        neighborhood: loan.neighborhood || "",
+        amount_today: sumToday,
+        payments_count: paymentsToday.length,
+        last_payment: paymentsToday[0],
+      });
+    });
+    return { items: byCustomerLoan, totalAmount: totalCollectedToday };
+  }
+
   async function loadDashboard() {
     clearMessages();
     try {
@@ -473,15 +497,59 @@
       ]);
       state.loans = getRows(loanData);
       state.collections = getRows(collectionData);
+      state.collectedToday = computeCollectedToday();
       populateExistingCustomers();
       renderLoans();
       renderCollections();
-      const activeLoans = state.loans.filter((loan) => !["paid", "cancelled"].includes(loan.status));
-      document.getElementById("total-balance").textContent =
-        money(activeLoans.reduce((total, loan) => total + Number(loan.balance || 0), 0));
-      document.getElementById("active-count").textContent = activeLoans.length;
-      document.getElementById("loan-count").textContent = state.loans.length;
-      document.getElementById("today-count").textContent = state.collections.length;
+
+      const isEmployee = state.role === "employee";
+      const mainLabel = document.getElementById("main-kpi-label");
+      const mainCaption = document.getElementById("main-kpi-caption");
+      const secondLabel = document.getElementById("second-kpi-label");
+      const secondCaption = document.getElementById("second-kpi-caption");
+      const thirdLabel = document.getElementById("third-kpi-label");
+      const thirdCaption = document.getElementById("third-kpi-caption");
+
+      if (isEmployee) {
+        const pendingTodayAmount = state.collections.reduce((sum, item) => {
+          const pending = item.pending_amount ?? (Number(item.amount_due || 0) - Number(item.amount_paid || 0));
+          return sum + Number(pending || 0);
+        }, 0);
+        const collectedTodayAmount = state.collectedToday.totalAmount;
+        const dailyTargetAmount = pendingTodayAmount + collectedTodayAmount;
+
+        if (mainLabel) mainLabel.textContent = "Por cobrar hoy";
+        document.getElementById("total-balance").textContent = money(pendingTodayAmount);
+        if (mainCaption) {
+          mainCaption.textContent = `Recogido hoy: ${money(collectedTodayAmount)} · Meta del día: ${money(dailyTargetAmount)}`;
+        }
+        if (secondLabel) secondLabel.textContent = "Cuotas pendientes hoy";
+        document.getElementById("today-count").textContent = String(state.collections.length);
+        if (secondCaption) {
+          secondCaption.hidden = false;
+          secondCaption.textContent = "Cuotas por cobrar en tu ruta";
+        }
+        if (thirdLabel) thirdLabel.textContent = "Personas cobradas hoy";
+        document.getElementById("loan-count").textContent = String(state.collectedToday.items.length);
+        if (thirdCaption) {
+          thirdCaption.textContent = `Cobrado hoy: ${money(collectedTodayAmount)}`;
+        }
+      } else {
+        const activeLoans = state.loans.filter((loan) => !["paid", "cancelled"].includes(loan.status));
+        if (mainLabel) mainLabel.textContent = "Saldo por cobrar";
+        document.getElementById("total-balance").textContent =
+          money(activeLoans.reduce((total, loan) => total + Number(loan.balance || 0), 0));
+        if (mainCaption) {
+          mainCaption.innerHTML = `<span id="active-count">${activeLoans.length}</span> préstamos activos en ruta`;
+        }
+        if (secondLabel) secondLabel.textContent = "Cobros para hoy";
+        document.getElementById("today-count").textContent = String(state.collections.length);
+        if (secondCaption) secondCaption.hidden = true;
+        if (thirdLabel) thirdLabel.textContent = "Préstamos en cartera";
+        document.getElementById("loan-count").textContent = String(state.loans.length);
+        if (thirdCaption) thirdCaption.textContent = "Total histórico registrado";
+      }
+
       document.getElementById("collection-pill").textContent =
         `${state.collections.length} ${state.collections.length === 1 ? "pendiente" : "pendientes"}`;
     } catch (error) {
@@ -532,9 +600,12 @@
         ? ` · Cobrador: ${escapeHtml(loan.collector_name)}`
         : " · Sin cobrador";
       const paymentsCount = Array.isArray(loan.payment_history) ? loan.payment_history.length : 0;
+      const amortBtnHtml =
+        `<button class="loan-action-secondary" type="button" data-open-amortization="${escapeHtml(loan.id)}">` +
+        `📊 Amortización</button>`;
       const manageBtnHtml =
         `<button class="loan-action-secondary" type="button" data-manage-loan="${escapeHtml(loan.id)}">` +
-        `🧾 Gestionar / Abonos (${paymentsCount})</button>`;
+        `🧾 Abonos (${paymentsCount})</button>`;
       const renewBtnHtml = isManager
         ? `<button class="loan-action-secondary" type="button" data-renew-customer="1" ` +
           `data-full-name="${escapeHtml(name)}" ` +
@@ -553,7 +624,7 @@
         `<button class="loan-action" type="button" data-payment-loan="${escapeHtml(loan.id)}" ` +
         `data-payment-name="${escapeHtml(name)}" data-payment-phone="${escapeHtml(phone)}" data-payment-suggested="${escapeHtml(suggested)}">Registrar pago</button>` +
         `<span class="status-pill ${statusClass(loan.status)}">${escapeHtml(labels[loan.status] || loan.status)}</span>` +
-        `<div class="loan-row-actions">${manageBtnHtml}${renewBtnHtml}</div>`;
+        `<div class="loan-row-actions">${amortBtnHtml}${manageBtnHtml}${renewBtnHtml}</div>`;
       elements.loans.append(row);
     });
   }
@@ -609,18 +680,64 @@
           `<div class="loan-person"><span class="customer-avatar">${escapeHtml(initials(name))}</span>` +
           `<div><strong>${escapeHtml(name)}</strong><span>${collectionType} · ` +
           `${escapeHtml(installment.due_date)}</span>${contactHtml}</div></div>` +
-          `<div class="loan-detail"><strong>${money(pending)}</strong><span>Saldo de cuota</span></div>` +
-          `<div class="loan-detail"><strong>${money(installment.amount_due)}</strong><span>Cuota completa</span></div>` +
+          `<div class="loan-detail"><strong>${money(pending)}</strong><span>Cuota por cobrar hoy</span></div>` +
+          `<div class="loan-detail"><strong>${money(installment.amount_due)}</strong><span>Valor cuota</span></div>` +
           `<button class="loan-action" type="button" data-payment-loan="${escapeHtml(installment.loan)}" ` +
           `data-payment-name="${escapeHtml(name)}" data-payment-phone="${escapeHtml(phone)}" data-payment-suggested="${escapeHtml(pending)}">Cobrar</button>` +
           `<span class="status-pill ${overdue ? "status-delinquent" : "status-active"}">` +
-          `${overdue ? "Vencida" : "Pendiente"}</span>`;
+          `${overdue ? "Vencida" : "Pendiente"}</span>` +
+          `<div class="loan-row-actions"><button class="loan-action-secondary" type="button" data-open-amortization="${escapeHtml(installment.loan)}">📊 Ver amortización</button></div>`;
         list.append(row);
       });
     });
     const homePill = document.getElementById("home-collection-pill");
     if (homePill) {
       homePill.textContent = `${state.collections.length} ${state.collections.length === 1 ? "pendiente" : "pendientes"}`;
+    }
+
+    // Renderizar lista de personas ya cobradas hoy para el cobrador
+    const collectedTodayData = state.collectedToday || { items: [], totalAmount: 0 };
+    const collectedPill = document.getElementById("home-collected-pill");
+    if (collectedPill) {
+      const cCount = collectedTodayData.items.length;
+      collectedPill.textContent = `${cCount} ${cCount === 1 ? "cobrada" : "cobradas"}`;
+    }
+    const collectedList = document.getElementById("home-collected-today-list");
+    const collectedEmpty = document.getElementById("home-collected-today-empty");
+    if (collectedList && collectedEmpty) {
+      const filteredCollected = homeQuery
+        ? collectedTodayData.items.filter((entry) =>
+            [entry.customer_name, entry.neighborhood]
+              .some((field) => String(field || "").toLowerCase().includes(homeQuery))
+          )
+        : collectedTodayData.items;
+      collectedList.replaceChildren();
+      collectedEmpty.hidden = filteredCollected.length > 0;
+      filteredCollected.forEach((entry) => {
+        const row = document.createElement("article");
+        row.className = "loan-row";
+        const name = entry.customer_name;
+        const phone = entry.customer_phone;
+        const receiptText =
+          `Comprobante de abono - ${state.tenant ? state.tenant.tenant_name : "TuNegocio"}
+` +
+          `Cliente: ${name}
+` +
+          `Abono recibido hoy: ${money(entry.amount_today)}
+` +
+          `Fecha: ${displayDate(localDateValue())}`;
+        row.innerHTML =
+          `<div class="loan-person"><span class="customer-avatar">${escapeHtml(initials(name))}</span>` +
+          `<div><strong>${escapeHtml(name)}</strong><span>${escapeHtml(entry.neighborhood || "En ruta")} · ${entry.payments_count} ${entry.payments_count === 1 ? "abono hoy" : "abonos hoy"}</span></div></div>` +
+          `<div class="loan-detail"><strong class="text-emerald">${money(entry.amount_today)}</strong><span>Recogido hoy</span></div>` +
+          `<div class="loan-detail"><strong>${money(entry.loan.balance)}</strong><span>Restante del crédito</span></div>` +
+          `<span class="status-pill status-paid">Cobrado hoy ✓</span>` +
+          `<div class="loan-row-actions">` +
+          `<button class="loan-action-secondary" type="button" data-open-amortization="${escapeHtml(entry.loan.id)}">📊 Ver amortización</button>` +
+          `<a class="loan-action-secondary" target="_blank" rel="noopener" href="${escapeHtml(whatsappUrl(phone, receiptText))}">📲 Enviar recibo</a>` +
+          `</div>`;
+        collectedList.append(row);
+      });
     }
   }
 
@@ -787,6 +904,7 @@
       `<button class="button button-primary button-sm" type="button" data-payment-loan="${escapeHtml(loan.id)}" ` +
         `data-payment-name="${escapeHtml(name)}" data-payment-phone="${escapeHtml(phone)}" ` +
         `data-payment-suggested="${escapeHtml(suggested)}">＋ Registrar abono</button>`,
+      `<button class="button button-outline button-sm" type="button" data-open-amortization="${escapeHtml(loan.id)}">📊 Ver amortización completa</button>`,
       isManager
         ? `<button class="button button-outline button-sm" type="button" data-renew-customer="1" ` +
           `data-full-name="${escapeHtml(name)}" data-document-id="${escapeHtml(loan.document_id || "")}" ` +
@@ -991,12 +1109,16 @@
             ? `<a class="contact-chip" target="_blank" rel="noopener" href="${escapeHtml(whatsappUrl(phone, `Hola ${customer.customer_name}, te escribimos de ${state.tenant ? state.tenant.tenant_name : "TuNegocio"}.`))}">💬 WhatsApp</a>`
             : "",
         ].filter(Boolean).join("");
+        const firstLoanId = (customer.loans && customer.loans[0] && customer.loans[0].id) || "";
+        const amortBtn = firstLoanId
+          ? `<button class="button button-primary button-xs" type="button" data-open-amortization="${escapeHtml(firstLoanId)}">📊 Ver amortización</button>`
+          : `<span class="muted">Sin préstamos</span>`;
         return `<tr><td><strong>${escapeHtml(customer.customer_name)}</strong>` +
           (contactChips ? `<div class="customer-cell-meta">${contactChips}</div>` : "") +
           `</td><td>${escapeHtml(customer.loan_count)}</td>` +
           `<td>${money(customer.principal)}</td><td>${money(customer.paperwork)}</td><td>${money(customer.interest)}</td>` +
           `<td>${money(customer.total_payable)}</td><td>${money(customer.collected)}</td><td><strong>${money(customer.balance)}</strong></td>` +
-          `<td><details class="amortization-details"><summary>Ver amortización</summary>${loans || "<p>Sin detalle de préstamos.</p>"}</details></td></tr>`;
+          `<td>${amortBtn}</td></tr>`;
       }).join("");
       const totals = report.totals || {};
       document.getElementById("customer-summary-totals").innerHTML = rows.length
@@ -1027,14 +1149,18 @@
     } else if ((view === "ledger" || view === "employee-requests") && state.role !== "owner") {
       view = "home";
     }
+    if (view !== "amortization" && state.view !== "amortization") {
+      state.previousView = view;
+    }
     state.view = view;
     const isEmployee = state.role === "employee";
     const titles = {
-      home: [isEmployee ? "Mi ruta de hoy" : "Resumen", isEmployee ? "Tu ruta de cobro diaria y saldo activo en calle." : "Una mirada clara a tus préstamos."],
+      home: [isEmployee ? "Mi ruta de hoy" : "Resumen", isEmployee ? "Cuotas por cobrar hoy y personas cobradas en tu jornada." : "Una mirada clara a tus préstamos."],
       collections: ["Cobros de hoy", "Cuotas pendientes de tu cartera."],
       ledger: ["Libro de cartera", "Consulta el formato del Excel por período y frecuencia."],
       cashflow: ["Caja y gastos", isEmployee ? "Registra tus gastos diarios y consulta tu balance de caja." : "Controla el dinero inicial, los cobros, los préstamos y los gastos."],
-      "customer-summary": ["Resumen por cliente", "Consulta la cartera consolidada y el detalle de amortización."],
+      "customer-summary": ["Resumen por cliente", "Consulta la cartera consolidada y abre la amortización de cualquier cliente."],
+      amortization: ["Amortización del cliente", "Plan de cuotas móvil, historial de pagos y opciones para compartir o descargar."],
       "employee-requests": ["Solicitudes de empleados", "Aprueba o rechaza las solicitudes de acceso al negocio."],
       "new-loan": ["Nuevo préstamo", "Registra un cliente o renueva su crédito en segundos."],
     };
@@ -2065,6 +2191,13 @@
       if (manageLoanDialog && manageLoanDialog.open && state.activeManagedLoanId) {
         openLoanManageDialog(state.activeManagedLoanId);
       }
+      if (state.view === 'amortization' && state.activeAmortLoan) {
+        const refreshedLoan = findLoanById(state.activeAmortLoan.id);
+        if (refreshedLoan) {
+          state.activeAmortLoan = refreshedLoan;
+          renderAmortizationView();
+        }
+      }
       const updatedLoan = state.loans.find((item) => String(item.id) === String(loanId));
       const newBalance = updatedLoan ? Number(updatedLoan.balance || 0) : 0;
       const receiptText =
@@ -2109,6 +2242,560 @@
       setScreen("auth");
       showError(error.message);
     }
+  }
+
+  // =========================================================================
+  // Pestañas de Ruta del Cobrador (Pendientes vs Cobradas hoy)
+  // =========================================================================
+  document.querySelectorAll("[data-collector-tab]").forEach((tabBtn) => {
+    tabBtn.addEventListener("click", () => {
+      const targetTab = tabBtn.dataset.collectorTab;
+      document.querySelectorAll("[data-collector-tab]").forEach((btn) => {
+        btn.classList.toggle("is-active", btn.dataset.collectorTab === targetTab);
+      });
+      const pendingPanel = document.getElementById("collector-pending-panel");
+      const collectedPanel = document.getElementById("collector-collected-panel");
+      if (pendingPanel) pendingPanel.hidden = targetTab !== "pending";
+      if (collectedPanel) collectedPanel.hidden = targetTab !== "collected";
+    });
+  });
+
+  // =========================================================================
+  // Vista dedicada de Amortización del Cliente (Mobile-First + Compartir / PNG / PDF)
+  // =========================================================================
+  state.amortFilter = "all";
+  state.activeAmortLoan = null;
+
+  function findCustomerLoans(loan) {
+    if (!loan) return [];
+    const doc = loan.document_id;
+    const name = loan.customer_name;
+    if (state.customerSummary && Array.isArray(state.customerSummary.rows)) {
+      const cust = state.customerSummary.rows.find(
+        (r) => (doc && r.customer_document === doc) || r.customer_name === name
+      );
+      if (cust && Array.isArray(cust.loans) && cust.loans.length) {
+        return cust.loans.map((item) => findLoanById(item.id)).filter(Boolean);
+      }
+    }
+    return state.loans.filter(
+      (item) => (doc && item.document_id === doc) || item.customer_name === name
+    );
+  }
+
+  function openAmortizationView(loanId) {
+    const loan = findLoanById(loanId);
+    if (!loan) {
+      showToast("No se encontró el detalle del préstamo.");
+      return;
+    }
+    const manageDialog = document.getElementById("loan-manage-dialog");
+    if (manageDialog && manageDialog.open) manageDialog.close();
+    if (state.view !== "amortization") {
+      state.previousView = state.view || "home";
+    }
+    state.activeAmortLoan = loan;
+    const siblingLoans = findCustomerLoans(loan);
+    const pickerWrap = document.getElementById("amortization-loan-picker-wrap");
+    const loanSelect = document.getElementById("amortization-loan-select");
+    if (pickerWrap && loanSelect) {
+      if (siblingLoans.length > 1) {
+        pickerWrap.hidden = false;
+        loanSelect.replaceChildren();
+        siblingLoans.forEach((sib, idx) => {
+          const optLabel = `Crédito #${idx + 1} · ${displayDate(sib.start_date || sib.date)} · ${money(sib.principal)}`;
+          loanSelect.add(new Option(optLabel, sib.id));
+        });
+        loanSelect.value = String(loan.id);
+      } else {
+        pickerWrap.hidden = true;
+      }
+    }
+    renderAmortizationView();
+    showView("amortization");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function renderAmortizationView() {
+    const loan = state.activeAmortLoan;
+    if (!loan) return;
+    const name = loan.customer_name || "Cliente";
+    const doc = loan.document_id || "Sin cédula";
+    const neighborhood = loan.neighborhood || "Sin barrio";
+    const phone = loan.customer_phone || "";
+    const freq = labels[loan.frequency] || loan.frequency || "Diario";
+    const startDate = displayDate(loan.start_date || loan.date || "");
+    const principal = Number(loan.principal || 0);
+    const totalPayable = Number(loan.total_payable || 0);
+    const interest = loan.interest !== undefined ? Number(loan.interest) : (totalPayable - principal);
+    const paperwork = Number(loan.paperwork_fee ?? loan.paperwork ?? 0);
+    const balance = Number(loan.balance || 0);
+    const collected = Math.max(0, totalPayable - balance);
+    const pct = totalPayable > 0 ? Math.min(100, Math.round((collected / totalPayable) * 100)) : 0;
+
+    const schedule = loan.installment_schedule || loan.installments || [];
+    const paidCount = schedule.filter((inst) => inst.status === "paid" || Number(inst.amount_paid) >= Number(inst.amount_due)).length;
+
+    const hero = document.getElementById("amortization-hero");
+    if (hero) {
+      hero.innerHTML =
+        `<div class="amortization-hero-top">` +
+        `<div><p class="eyebrow" style="color:rgba(255,255,255,0.8)">ESTADO DE CUENTA Y AMORTIZACIÓN</p>` +
+        `<h2>${escapeHtml(name)}</h2>` +
+        `<div class="amortization-hero-meta">${escapeHtml(doc)} · ${escapeHtml(neighborhood)}${phone ? ` · 📞 ${escapeHtml(phone)}` : ""}</div>` +
+        `<div class="amortization-hero-meta">Inicio: ${escapeHtml(startDate)} · Modalidad: ${escapeHtml(freq)}</div></div>` +
+        `<button class="button button-secondary button-sm" type="button" data-payment-loan="${escapeHtml(loan.id)}" ` +
+        `data-payment-name="${escapeHtml(name)}" data-payment-phone="${escapeHtml(phone)}" data-payment-suggested="${escapeHtml(loan.collection_amount || balance)}">＋ Registrar abono</button>` +
+        `</div>` +
+        `<div class="amort-progress-wrap">` +
+        `<div class="amort-progress-labels"><span>Avance del crédito: ${pct}% pagado</span><span>${paidCount} de ${schedule.length} cuotas cubiertas</span></div>` +
+        `<div class="amort-progress-bar"><div class="amort-progress-fill" style="width:${pct}%"></div></div>` +
+        `</div>`;
+    }
+
+    const kpiGrid = document.getElementById("amortization-kpi-grid");
+    if (kpiGrid) {
+      kpiGrid.innerHTML =
+        `<div class="manage-kpi-item"><span>Capital prestado</span><strong>${money(principal)}</strong></div>` +
+        `<div class="manage-kpi-item"><span>Interés</span><strong>${money(interest)}</strong></div>` +
+        `<div class="manage-kpi-item"><span>Papelería</span><strong>${money(paperwork)}</strong></div>` +
+        `<div class="manage-kpi-item"><span>Total a pagar</span><strong>${money(totalPayable)}</strong></div>` +
+        `<div class="manage-kpi-item"><span>Total abonado</span><strong class="text-emerald">${money(collected)}</strong></div>` +
+        `<div class="manage-kpi-item"><span>Saldo pendiente</span><strong class="text-danger">${money(balance)}</strong></div>`;
+    }
+
+    const filter = state.amortFilter || "all";
+    const filteredSchedule = schedule.filter((inst) => {
+      const isPaid = inst.status === "paid" || Number(inst.amount_paid) >= Number(inst.amount_due);
+      if (filter === "paid") return isPaid;
+      if (filter === "pending") return !isPaid;
+      return true;
+    });
+
+    const cardsContainer = document.getElementById("amortization-installments-cards");
+    if (cardsContainer) {
+      if (!filteredSchedule.length) {
+        cardsContainer.innerHTML = `<p class="muted">No hay cuotas en este filtro.</p>`;
+      } else {
+        cardsContainer.innerHTML = filteredSchedule.map((inst) => {
+          const pending = inst.pending_amount ?? Math.max(0, Number(inst.amount_due || 0) - Number(inst.amount_paid || 0));
+          const isPaid = inst.status === "paid" || pending <= 0;
+          const isOverdue = inst.status === "delinquent" || Boolean(inst.is_overdue);
+          const cardStateClass = isPaid ? "is-paid" : (isOverdue ? "is-overdue" : "");
+          const pillLabel = isPaid ? "Pagada ✓" : (isOverdue ? "En mora" : (Number(inst.amount_paid) > 0 ? "Parcial" : "Pendiente"));
+          const pillClass = isPaid ? "status-paid" : (isOverdue ? "status-delinquent" : (Number(inst.amount_paid) > 0 ? "status-partial" : "status-pending"));
+          return (
+            `<article class="amort-installment-card ${cardStateClass}">` +
+            `<div class="amort-card-head">` +
+            `<div><strong>Cuota #${escapeHtml(inst.number)}</strong><div class="amort-card-date">Vence: ${escapeHtml(displayDate(inst.due_date))}</div></div>` +
+            `<span class="status-pill ${pillClass}">${escapeHtml(pillLabel)}</span>` +
+            `</div>` +
+            `<div class="amort-card-amounts">` +
+            `<div><span>Valor cuota</span><strong>${money(inst.amount_due)}</strong></div>` +
+            `<div><span>Abonado</span><strong class="text-emerald">${money(inst.amount_paid)}</strong></div>` +
+            `<div><span>Pendiente</span><strong>${money(pending)}</strong></div>` +
+            `</div>` +
+            `</article>`
+          );
+        }).join("");
+      }
+    }
+
+    const payments = loan.payment_history || loan.payments || [];
+    const paymentsCountEl = document.getElementById("amortization-payments-count");
+    if (paymentsCountEl) {
+      paymentsCountEl.textContent = `${payments.length} ${payments.length === 1 ? "movimiento" : "movimientos"}`;
+    }
+    const paymentsListEl = document.getElementById("amortization-payments-list");
+    if (paymentsListEl) {
+      if (!payments.length) {
+        paymentsListEl.innerHTML = `<p class="muted">No se han registrado abonos individuales todavía.</p>`;
+      } else {
+        const methodLabels = { cash: "Efectivo", transfer: "Transferencia", other: "Otro" };
+        paymentsListEl.innerHTML = payments.map((p) => {
+          const isRev = p.direction === "reversal";
+          return (
+            `<article class="payment-history-item ${p.is_reversed ? "is-reversed" : ""}">` +
+            `<div class="payment-history-meta">` +
+            `<strong>${money(p.amount)} · ${escapeHtml(isRev ? "Reversa" : "Abono recibido")}</strong>` +
+            `<span>${escapeHtml(displayDate(p.date))} · ${escapeHtml(methodLabels[p.method] || p.method || "Efectivo")}` +
+            `${p.collector_name ? ` · Cobrador: ${escapeHtml(p.collector_name)}` : ""}</span>` +
+            `</div>` +
+            `</article>`
+          );
+        }).join("");
+      }
+    }
+  }
+
+  function buildAmortizationText(loan) {
+    if (!loan) return "";
+    const name = loan.customer_name || "Cliente";
+    const totalPayable = Number(loan.total_payable || 0);
+    const balance = Number(loan.balance || 0);
+    const collected = Math.max(0, totalPayable - balance);
+    const schedule = loan.installment_schedule || loan.installments || [];
+    const paidCount = schedule.filter((inst) => inst.status === "paid" || Number(inst.amount_paid) >= Number(inst.amount_due)).length;
+    const pendingInstallments = schedule.filter((inst) => Number(inst.amount_paid) < Number(inst.amount_due)).slice(0, 8);
+    let lines = [
+      `📊 *ESTADO DE CUENTA Y AMORTIZACIÓN*`,
+      `Negocio: ${state.tenant ? state.tenant.tenant_name : "TuNegocio"}`,
+      `Cliente: ${name}`,
+      `Modalidad: ${labels[loan.frequency] || loan.frequency}`,
+      `Capital: ${money(loan.principal)}`,
+      `Total a pagar: ${money(totalPayable)}`,
+      `Total abonado: ${money(collected)}`,
+      `Saldo pendiente: ${money(balance)}`,
+      `Cuotas cubiertas: ${paidCount} de ${schedule.length}`,
+    ];
+    if (pendingInstallments.length) {
+      lines.push(`\n*Próximas cuotas pendientes:*`);
+      pendingInstallments.forEach((inst) => {
+        const pend = inst.pending_amount ?? (Number(inst.amount_due) - Number(inst.amount_paid));
+        lines.push(`• Cuota #${inst.number} (${displayDate(inst.due_date)}): ${money(pend)}`);
+      });
+    }
+    return lines.join("\n");
+  }
+
+  function buildAmortizationCanvas(loan) {
+    const schedule = loan.installment_schedule || loan.installments || [];
+    const rowHeight = 36;
+    const headerHeight = 310;
+    const footerHeight = 60;
+    const width = 960;
+    const height = headerHeight + Math.max(1, schedule.length) * rowHeight + footerHeight;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+
+    // Fondo general
+    ctx.fillStyle = "#f8faf9";
+    ctx.fillRect(0, 0, width, height);
+
+    // Cabecera verde oscuro
+    ctx.fillStyle = "#0d2e22";
+    ctx.fillRect(0, 0, width, 150);
+
+    ctx.fillStyle = "#86efac";
+    ctx.font = "bold 14px sans-serif";
+    ctx.fillText((state.tenant ? state.tenant.tenant_name : "TUNEGOCIO").toUpperCase() + " · TABLA DE AMORTIZACIÓN", 36, 40);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 28px sans-serif";
+    ctx.fillText(loan.customer_name || "Cliente", 36, 80);
+
+    ctx.fillStyle = "#d1fae5";
+    ctx.font = "16px sans-serif";
+    const meta = `Doc: ${loan.document_id || "—"} · Barrio: ${loan.neighborhood || "—"} · Modalidad: ${labels[loan.frequency] || loan.frequency}`;
+    ctx.fillText(meta, 36, 112);
+
+    // Resumen KPIs
+    const totalPayable = Number(loan.total_payable || 0);
+    const balance = Number(loan.balance || 0);
+    const collected = Math.max(0, totalPayable - balance);
+    const kpis = [
+      ["CAPITAL", money(loan.principal)],
+      ["TOTAL A PAGAR", money(totalPayable)],
+      ["TOTAL ABONADO", money(collected)],
+      ["SALDO PENDIENTE", money(balance)],
+    ];
+    kpis.forEach(([label, val], idx) => {
+      const boxX = 36 + idx * 224;
+      const boxY = 170;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(boxX, boxY, 210, 74);
+      ctx.strokeStyle = "#d5e2dc";
+      ctx.strokeRect(boxX, boxY, 210, 74);
+      ctx.fillStyle = "#5b6e65";
+      ctx.font = "bold 12px sans-serif";
+      ctx.fillText(label, boxX + 14, boxY + 26);
+      ctx.fillStyle = idx === 2 ? "#15803d" : (idx === 3 ? "#b91c1c" : "#0d2e22");
+      ctx.font = "bold 19px sans-serif";
+      ctx.fillText(val, boxX + 14, boxY + 54);
+    });
+
+    // Encabezado de tabla
+    const tableTop = 266;
+    ctx.fillStyle = "#e6f4ed";
+    ctx.fillRect(36, tableTop, width - 72, 36);
+    ctx.fillStyle = "#0d2e22";
+    ctx.font = "bold 13px sans-serif";
+    const cols = [
+      ["CUOTA", 52],
+      ["VENCIMIENTO", 160],
+      ["VALOR CUOTA", 340],
+      ["ABONADO", 520],
+      ["PENDIENTE", 690],
+      ["ESTADO", 830],
+    ];
+    cols.forEach(([title, x]) => ctx.fillText(title, x, tableTop + 23));
+
+    schedule.forEach((inst, idx) => {
+      const y = tableTop + 36 + idx * rowHeight;
+      ctx.fillStyle = idx % 2 === 0 ? "#ffffff" : "#f3f7f5";
+      ctx.fillRect(36, y, width - 72, rowHeight);
+      const pending = inst.pending_amount ?? Math.max(0, Number(inst.amount_due || 0) - Number(inst.amount_paid || 0));
+      const isPaid = inst.status === "paid" || pending <= 0;
+      const statusText = isPaid ? "Pagada" : (inst.is_overdue ? "Vencida" : "Pendiente");
+      ctx.fillStyle = "#16241e";
+      ctx.font = "14px sans-serif";
+      ctx.fillText(`#${inst.number}`, 52, y + 23);
+      ctx.fillText(displayDate(inst.due_date), 160, y + 23);
+      ctx.fillText(money(inst.amount_due), 340, y + 23);
+      ctx.fillStyle = "#15803d";
+      ctx.fillText(money(inst.amount_paid), 520, y + 23);
+      ctx.fillStyle = pending > 0 ? "#b91c1c" : "#5b6e65";
+      ctx.fillText(money(pending), 690, y + 23);
+      ctx.fillStyle = isPaid ? "#15803d" : "#0d2e22";
+      ctx.font = "bold 13px sans-serif";
+      ctx.fillText(statusText, 830, y + 23);
+    });
+
+    ctx.fillStyle = "#5b6e65";
+    ctx.font = "12px sans-serif";
+    ctx.fillText(`Generado el ${displayDate(localDateValue())} · TuNegocio`, 36, height - 22);
+    return canvas;
+  }
+
+  async function downloadAmortizationImage() {
+    const loan = state.activeAmortLoan;
+    if (!loan) return;
+    const canvas = buildAmortizationCanvas(loan);
+    const slugName = String(loan.customer_name || "cliente").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+    const dataUrl = canvas.toDataURL("image/png");
+    const link = document.createElement("a");
+    link.href = dataUrl;
+    link.download = `amortizacion_${slugName}_${localDateValue()}.png`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    showToast("Imagen de amortización descargada.");
+  }
+
+  async function shareAmortization(preferImage = false) {
+    const loan = state.activeAmortLoan;
+    if (!loan) return;
+    const text = buildAmortizationText(loan);
+    try {
+      const canvas = buildAmortizationCanvas(loan);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+      const slugName = String(loan.customer_name || "cliente").toLowerCase().replace(/[^a-z0-9]+/g, "_");
+      const file = blob ? new File([blob], `amortizacion_${slugName}.png`, { type: "image/png" }) : null;
+      if (navigator.canShare && file && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          title: `Amortización - ${loan.customer_name}`,
+          text,
+          files: [file],
+        });
+        return;
+      }
+      if (navigator.share && !preferImage) {
+        await navigator.share({
+          title: `Amortización - ${loan.customer_name}`,
+          text,
+        });
+        return;
+      }
+    } catch (err) {
+      if (err && err.name === "AbortError") return;
+    }
+    if (preferImage) {
+      await downloadAmortizationImage();
+      showToast("Imagen descargada lista para compartir en Instagram o Messenger.");
+      return;
+    }
+    window.open(whatsappUrl(loan.customer_phone || "", text), "_blank", "noopener");
+  }
+
+  function exportAmortizationPdf() {
+    const loan = state.activeAmortLoan;
+    if (!loan) return;
+    const canvas = buildAmortizationCanvas(loan);
+    const imgData = canvas.toDataURL("image/png");
+    const win = window.open("", "_blank");
+    if (!win) {
+      downloadAmortizationImage();
+      return;
+    }
+    win.document.write(
+      `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Amortización - ${escapeHtml(loan.customer_name || "Cliente")}</title>` +
+      `<style>body{margin:0;padding:16px;font-family:sans-serif;text-align:center;background:#fff}img{max-width:100%;height:auto}@media print{body{padding:0}}</style></head>` +
+      `<body><img src="${imgData}" alt="Tabla de amortización"><script>window.onload=()=>{setTimeout(()=>{window.print();},250);};<\/script></body></html>`
+    );
+    win.document.close();
+  }
+
+  const amortBackBtn = document.getElementById("amortization-back-button");
+  if (amortBackBtn) {
+    amortBackBtn.addEventListener("click", () => {
+      showView(state.previousView || "home");
+    });
+  }
+  const amortLoanSelect = document.getElementById("amortization-loan-select");
+  if (amortLoanSelect) {
+    amortLoanSelect.addEventListener("change", (event) => {
+      const nextLoan = findLoanById(event.target.value);
+      if (nextLoan) {
+        state.activeAmortLoan = nextLoan;
+        renderAmortizationView();
+      }
+    });
+  }
+  document.querySelectorAll("[data-amort-filter]").forEach((pill) => {
+    pill.addEventListener("click", () => {
+      state.amortFilter = pill.dataset.amortFilter;
+      document.querySelectorAll("[data-amort-filter]").forEach((p) => {
+        p.classList.toggle("is-active", p.dataset.amortFilter === state.amortFilter);
+      });
+      renderAmortizationView();
+    });
+  });
+  const amortShareBtn = document.getElementById("amortization-share-button");
+  if (amortShareBtn) amortShareBtn.addEventListener("click", () => shareAmortization(false));
+  const amortImageBtn = document.getElementById("amortization-image-button");
+  if (amortImageBtn) amortImageBtn.addEventListener("click", downloadAmortizationImage);
+  const amortPdfBtn = document.getElementById("amortization-pdf-button");
+  if (amortPdfBtn) amortPdfBtn.addEventListener("click", exportAmortizationPdf);
+  const shareWaBtn = document.getElementById("share-amort-whatsapp");
+  if (shareWaBtn) {
+    shareWaBtn.addEventListener("click", () => {
+      if (!state.activeAmortLoan) return;
+      const text = buildAmortizationText(state.activeAmortLoan);
+      window.open(whatsappUrl(state.activeAmortLoan.customer_phone || "", text), "_blank", "noopener");
+    });
+  }
+  const shareIgBtn = document.getElementById("share-amort-instagram");
+  if (shareIgBtn) shareIgBtn.addEventListener("click", () => shareAmortization(true));
+  const shareCopyBtn = document.getElementById("share-amort-copy");
+  if (shareCopyBtn) {
+    shareCopyBtn.addEventListener("click", async () => {
+      if (!state.activeAmortLoan) return;
+      const text = buildAmortizationText(state.activeAmortLoan);
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast("Resumen de amortización copiado al portapapeles.");
+      } catch (e) {
+        showToast("No se pudo copiar automáticamente.");
+      }
+    });
+  }
+
+  document.addEventListener("click", (event) => {
+    const openAmortBtn = event.target.closest("[data-open-amortization]");
+    if (openAmortBtn) {
+      openAmortizationView(openAmortBtn.dataset.openAmortization);
+    }
+  });
+
+  // =========================================================================
+  // Modal y Flujo de Cierre del Día
+  // =========================================================================
+  const dayCloseDialog = document.getElementById("day-close-dialog");
+  const countedCashInput = document.getElementById("day-close-counted");
+  const diffHint = document.getElementById("day-close-diff-hint");
+
+  function updateDayCloseDiff() {
+    if (!countedCashInput || !diffHint) return;
+    const expected = Number(state.dayCloseExpectedCash || 0);
+    const raw = countedCashInput.value;
+    if (!raw) {
+      diffHint.textContent = `Saldo esperado en caja: ${money(expected)}`;
+      return;
+    }
+    const counted = Number(raw || 0);
+    const diff = counted - expected;
+    if (Math.abs(diff) < 1) {
+      diffHint.textContent = "✓ Cuadre exacto con el saldo esperado.";
+    } else if (diff > 0) {
+      diffHint.textContent = `Sobrante en caja: +${money(diff)} sobre lo esperado.`;
+    } else {
+      diffHint.textContent = `Faltante en caja: ${money(diff)} respecto a lo esperado.`;
+    }
+  }
+  if (countedCashInput) countedCashInput.addEventListener("input", updateDayCloseDiff);
+
+  async function openDayCloseDialog() {
+    if (!dayCloseDialog) return;
+    const todayStr = localDateValue();
+    try {
+      const report = await api(`/collector-cash-summary/?period=day&date=${todayStr}`);
+      state.cashSummary = report;
+      const totals = report.totals || {};
+      const collectedTodayData = state.collectedToday || computeCollectedToday();
+      const expectedCash = Number(totals.expected_cash || 0);
+      state.dayCloseExpectedCash = expectedCash;
+
+      document.getElementById("day-close-subtitle").textContent =
+        `Resumen del día ${displayDate(todayStr)} · ${state.tenant ? state.tenant.tenant_name : "TuNegocio"}`;
+
+      document.getElementById("day-close-kpi-grid").innerHTML =
+        `<div class="manage-kpi-item"><span>Personas cobradas hoy</span><strong class="text-emerald">${collectedTodayData.items.length}</strong></div>` +
+        `<div class="manage-kpi-item"><span>Cuotas pendientes hoy</span><strong>${state.collections.length}</strong></div>` +
+        `<div class="manage-kpi-item"><span>Dinero inicial (Base)</span><strong>${money(totals.opening_cash)}</strong></div>` +
+        `<div class="manage-kpi-item"><span>Total recogido hoy</span><strong class="text-emerald">${money(totals.collected)}</strong></div>` +
+        `<div class="manage-kpi-item"><span>Gastos del día</span><strong class="text-danger">${money(totals.expenses)}</strong></div>` +
+        `<div class="manage-kpi-item"><span>Efectivo a entregar</span><strong>${money(expectedCash)}</strong></div>`;
+
+      updateDayCloseDiff();
+      dayCloseDialog.showModal();
+    } catch (error) {
+      showError(error.message);
+    }
+  }
+
+  function buildDayCloseReportText() {
+    const todayStr = localDateValue();
+    const totals = (state.cashSummary && state.cashSummary.totals) || {};
+    const collectedTodayData = state.collectedToday || computeCollectedToday();
+    const counted = countedCashInput && countedCashInput.value ? money(countedCashInput.value) : "No indicado";
+    const notes = (document.getElementById("day-close-notes") && document.getElementById("day-close-notes").value.trim()) || "Sin novedades";
+    return [
+      `🔒 *CIERRE DEL DÍA DE COBRO*`,
+      `Fecha: ${displayDate(todayStr)}`,
+      `Usuario: ${state.username || "Cobrador"}`,
+      `Personas cobradas hoy: ${collectedTodayData.items.length}`,
+      `Cuotas pendientes: ${state.collections.length}`,
+      `Dinero inicial: ${money(totals.opening_cash)}`,
+      `Total recogido hoy: ${money(totals.collected)}`,
+      `Papelería hoy: ${money(totals.paperwork)}`,
+      `Gastos del día: ${money(totals.expenses)}`,
+      `Capital prestado hoy: ${money(totals.principal_lent)}`,
+      `*Saldo esperado a entregar: ${money(totals.expected_cash)}*`,
+      `Efectivo físico contado: ${counted}`,
+      `Observaciones: ${notes}`,
+    ].join("\n");
+  }
+
+  ["open-day-close-button", "collector-close-day-inline", "cashflow-day-close-button"].forEach((id) => {
+    const btn = document.getElementById(id);
+    if (btn) btn.addEventListener("click", openDayCloseDialog);
+  });
+  const closeDayCloseBtn = document.getElementById("close-day-close-dialog");
+  if (closeDayCloseBtn && dayCloseDialog) {
+    closeDayCloseBtn.addEventListener("click", () => dayCloseDialog.close());
+    dayCloseDialog.addEventListener("click", (event) => {
+      if (event.target === dayCloseDialog) dayCloseDialog.close();
+    });
+  }
+  const dayCloseWaBtn = document.getElementById("day-close-whatsapp-btn");
+  if (dayCloseWaBtn) {
+    dayCloseWaBtn.addEventListener("click", () => {
+      window.open(whatsappUrl("", buildDayCloseReportText()), "_blank", "noopener");
+    });
+  }
+  const dayCloseForm = document.getElementById("day-close-form");
+  if (dayCloseForm) {
+    dayCloseForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const todayStr = localDateValue();
+      sessionStorage.setItem(`day_closed_${todayStr}`, "1");
+      const labelEl = document.getElementById("open-day-close-label");
+      if (labelEl) labelEl.textContent = "Día cerrado ✓";
+      if (dayCloseDialog && dayCloseDialog.open) dayCloseDialog.close();
+      showToast("Cierre del día confirmado correctamente.");
+    });
   }
 
   toggleRegistration(false);

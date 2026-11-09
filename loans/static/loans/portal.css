@@ -2546,3 +2546,242 @@ textarea:focus-visible {
   color: var(--green-dark);
   font-weight: 800;
 }
+
+
+/* ==========================================================================
+   Vista dedicada de Amortización del Cliente (Mobile-First) y Pestañas de Ruta
+   ========================================================================== */
+
+.collector-route-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+
+.collector-route-tab {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-secondary);
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background 0.16s, color 0.16s, box-shadow 0.16s;
+}
+
+.collector-route-tab.is-active {
+  background: var(--surface);
+  color: var(--green-dark);
+  box-shadow: var(--shadow-sm);
+}
+
+.amortization-page-card {
+  display: grid;
+  gap: 16px;
+}
+
+.amortization-topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.amortization-share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.social-share-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--green-border);
+  border-radius: var(--radius-sm);
+  background: var(--green-soft);
+}
+
+.social-share-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--green-dark);
+}
+
+.social-chip-wa {
+  border-color: #16a34a;
+  background: #dcfce7;
+  color: #14532d;
+}
+
+.social-chip-ig {
+  border-color: #db2777;
+  background: #fce7f3;
+  color: #831843;
+}
+
+.amortization-hero {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--green-border);
+  border-radius: var(--radius-md);
+  background: linear-gradient(135deg, var(--green) 0%, var(--green-dark) 100%);
+  color: #ffffff;
+}
+
+.amortization-hero-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.amortization-hero h2 {
+  margin: 2px 0 4px;
+  font-family: "Manrope", sans-serif;
+  font-size: clamp(18px, 4vw, 24px);
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.amortization-hero-meta {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.amort-progress-wrap {
+  display: grid;
+  gap: 6px;
+}
+
+.amort-progress-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.amort-progress-bar {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.amort-progress-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: #4ade80;
+  transition: width 0.25s ease;
+}
+
+.amortization-schedule-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.amortization-schedule-head h3 {
+  margin: 0;
+  font-family: "Manrope", sans-serif;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.amortization-filter-pills {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 260px;
+}
+
+.amortization-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+
+.amort-installment-card {
+  display: grid;
+  gap: 8px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+
+.amort-installment-card.is-paid {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.amort-installment-card.is-overdue {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.amort-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.amort-card-head strong {
+  font-family: "Manrope", sans-serif;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.amort-card-date {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.amort-card-amounts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+
+.amort-card-amounts div span {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.amort-card-amounts div strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.amortization-payments-section {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}

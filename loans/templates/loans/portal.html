@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'loans/portal.css' %}?v=20261109-7">
-  <script src="{% static 'loans/portal.js' %}?v=20261109-7" defer></script>
+  <link rel="stylesheet" href="{% static 'loans/portal.css' %}?v=20261109-8">
+  <script src="{% static 'loans/portal.js' %}?v=20261109-8" defer></script>
 </head>
 <body>
   <main class="app-shell" id="loan-app" data-api-base="/api/v1">
@@ -248,6 +248,10 @@
               <p class="muted" id="view-subtitle">Una mirada clara a tus préstamos.</p>
             </div>
             <div class="page-heading-actions">
+              <button class="button button-outline" id="open-day-close-button" type="button">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                <span id="open-day-close-label">Cierre del día</span>
+              </button>
               <button class="button button-excel" id="open-excel-dialog-button" type="button" hidden>
                 <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 13 6 5"/><path d="m15 13-6 5"/></svg>
                 <span>Exportar Excel</span>
@@ -291,10 +295,10 @@
                   <span class="summary-icon" aria-hidden="true">
                     <svg class="icon" viewBox="0 0 24 24"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
                   </span>
-                  <span class="summary-label">Saldo por cobrar</span>
+                  <span class="summary-label" id="main-kpi-label">Saldo por cobrar</span>
                 </div>
                 <strong class="summary-value" id="total-balance">$0.00</strong>
-                <span class="summary-caption"><span id="active-count">0</span> préstamos activos en ruta</span>
+                <span class="summary-caption" id="main-kpi-caption"><span id="active-count">0</span> préstamos activos en ruta</span>
                 <span class="summary-decoration" aria-hidden="true">$</span>
               </article>
 
@@ -303,9 +307,10 @@
                   <span class="summary-icon icon-soft" aria-hidden="true">
                     <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
                   </span>
-                  <span class="summary-label">Cobros para hoy</span>
+                  <span class="summary-label" id="second-kpi-label">Cobros para hoy</span>
                 </div>
                 <strong class="summary-value" id="today-count">0</strong>
+                <span class="summary-caption" id="second-kpi-caption" hidden>Cuotas pendientes hoy</span>
                 <button class="inline-link" id="home-goto-collections" type="button" data-view="collections">
                   <span>Ir a ruta de cobro</span>
                   <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
@@ -317,10 +322,10 @@
                   <span class="summary-icon icon-warm" aria-hidden="true">
                     <svg class="icon" viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
                   </span>
-                  <span class="summary-label">Préstamos en cartera</span>
+                  <span class="summary-label" id="third-kpi-label">Préstamos en cartera</span>
                 </div>
                 <strong class="summary-value" id="loan-count">0</strong>
-                <span class="summary-caption">Total histórico registrado</span>
+                <span class="summary-caption" id="third-kpi-caption">Total histórico registrado</span>
               </article>
             </div>
 
@@ -359,23 +364,50 @@
               <div class="section-heading">
                 <div>
                   <h2>Mi ruta de cobros hoy</h2>
-                  <p class="muted">Cuotas pendientes asignadas a tu ruta diaria.</p>
+                  <p class="muted">Revisa las cuotas pendientes por cobrar y las personas ya cobradas hoy.</p>
                 </div>
                 <div class="section-actions">
                   <div class="quick-search-wrap">
                     <svg class="input-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
                     <input id="home-collection-quick-search" type="search" placeholder="Filtrar cliente en ruta…" aria-label="Filtrar mi ruta de hoy">
                   </div>
-                  <span class="count-pill" id="home-collection-pill">0 pendientes</span>
+                  <button class="button button-primary button-sm" type="button" id="collector-close-day-inline">
+                    <span>✓ Cerrar el día</span>
+                  </button>
                 </div>
               </div>
-              <div class="loan-list" id="home-collection-list"></div>
-              <div class="empty-state" id="home-collections-empty" hidden>
-                <span class="empty-icon empty-success" aria-hidden="true">
-                  <svg class="icon" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
-                </span>
-                <h3>Todo al día</h3>
-                <p>No tienes cobros pendientes por registrar en este momento.</p>
+
+              <div class="collector-route-tabs" role="tablist" aria-label="Estado de cobros del día">
+                <button class="collector-route-tab is-active" type="button" data-collector-tab="pending">
+                  <span>⏳ Cuotas pendientes</span>
+                  <span class="count-pill" id="home-collection-pill">0 pendientes</span>
+                </button>
+                <button class="collector-route-tab" type="button" data-collector-tab="collected">
+                  <span>✅ Personas cobradas hoy</span>
+                  <span class="count-pill" id="home-collected-pill">0 cobradas</span>
+                </button>
+              </div>
+
+              <div id="collector-pending-panel">
+                <div class="loan-list" id="home-collection-list"></div>
+                <div class="empty-state" id="home-collections-empty" hidden>
+                  <span class="empty-icon empty-success" aria-hidden="true">
+                    <svg class="icon" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+                  </span>
+                  <h3>Todo al día</h3>
+                  <p>No tienes cuotas pendientes por cobrar en este momento.</p>
+                </div>
+              </div>
+
+              <div id="collector-collected-panel" hidden>
+                <div class="loan-list" id="home-collected-today-list"></div>
+                <div class="empty-state" id="home-collected-today-empty" hidden>
+                  <span class="empty-icon" aria-hidden="true">
+                    <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                  </span>
+                  <h3>Aún no hay cobros registrados hoy</h3>
+                  <p>A medida que registres abonos en tu ruta, aparecerán aquí las personas cobradas.</p>
+                </div>
               </div>
             </section>
           </section>
@@ -513,6 +545,10 @@
                   <button class="button button-primary" type="submit" id="cash-summary-search">
                     <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
                     <span>Consultar caja</span>
+                  </button>
+                  <button class="button button-outline" type="button" id="cashflow-day-close-button">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                    <span>Finalizar / Cerrar día</span>
                   </button>
                   <button class="button button-outline" type="button" id="cash-export-excel">
                     <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -751,6 +787,75 @@
                 </span>
                 <h3>No se encontraron clientes</h3>
                 <p>Prueba otro nombre o ajusta el rango de fechas.</p>
+              </div>
+            </section>
+          </section>
+
+          <!-- VISTA DEDICADA: AMORTIZACIÓN DEL CLIENTE (MOBILE-FIRST + COMPARTIR / IMAGEN / PDF) -->
+          <section class="view-panel" id="amortization-view" hidden aria-label="Amortización del cliente">
+            <section class="section-card amortization-page-card">
+              <div class="amortization-topbar">
+                <button class="button button-quiet" type="button" id="amortization-back-button">
+                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+                  <span>Volver</span>
+                </button>
+                <div class="amortization-loan-Dynamic-picker" id="amortization-loan-picker-wrap" hidden>
+                  <label for="amortization-loan-select" class="sr-only">Seleccionar préstamo</label>
+                  <select id="amortization-loan-select" class="filter-select-compact"></select>
+                </div>
+                <div class="amortization-share-actions">
+                  <button class="button button-primary button-sm" type="button" id="amortization-share-button">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                    <span>Compartir</span>
+                  </button>
+                  <button class="button button-outline button-sm" type="button" id="amortization-image-button">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    <span>Guardar imagen</span>
+                  </button>
+                  <button class="button button-outline button-sm" type="button" id="amortization-pdf-button">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="m9 15 3 3 3-3"/></svg>
+                    <span>Guardar PDF</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Barra rápida de redes sociales (WhatsApp, Messenger, Instagram, Copiar) -->
+              <div class="social-share-bar" id="amortization-social-bar">
+                <span class="social-share-label">Enviar por:</span>
+                <button class="contact-chip social-chip-wa" type="button" id="share-amort-whatsapp">📲 WhatsApp</button>
+                <button class="contact-chip social-chip-ig" type="button" id="share-amort-instagram">📸 Instagram / Messenger (Imagen)</button>
+                <button class="contact-chip" type="button" id="share-amort-copy">📋 Copiar resumen</button>
+              </div>
+
+              <!-- Encabezado y progreso del préstamo -->
+              <div class="amortization-hero" id="amortization-hero"></div>
+
+              <!-- KPIs del crédito -->
+              <div class="manage-kpi-grid amortization-kpi-grid" id="amortization-kpi-grid"></div>
+
+              <!-- Filtros de cuotas -->
+              <div class="amortization-schedule-head">
+                <div>
+                  <h3>Plan de cuotas y vencimientos</h3>
+                  <p class="muted" id="amortization-schedule-subtitle">Detalle cuota por cuota optimizado para móvil.</p>
+                </div>
+                <div class="period-segmented amortization-filter-pills" role="group" aria-label="Filtrar cuotas">
+                  <button class="period-pill is-active" type="button" data-amort-filter="all">Todas</button>
+                  <button class="period-pill" type="button" data-amort-filter="pending">Pendientes</button>
+                  <button class="period-pill" type="button" data-amort-filter="paid">Pagadas</button>
+                </div>
+              </div>
+
+              <!-- Tarjetas Mobile-First de cada cuota -->
+              <div class="amortization-cards-grid" id="amortization-installments-cards"></div>
+
+              <!-- Historial de abonos en la vista de amortización -->
+              <div class="amortization-payments-section">
+                <div class="manage-section-head">
+                  <h3>Historial de abonos aplicados</h3>
+                  <span class="count-pill" id="amortization-payments-count">0 abonos</span>
+                </div>
+                <div class="manage-payments-list" id="amortization-payments-list"></div>
               </div>
             </section>
           </section>
@@ -1122,6 +1227,43 @@
         </div>
       </details>
     </div>
+  </dialog>
+
+  <!-- MODAL: CIERRE DEL DÍA DE COBRO -->
+  <dialog class="payment-dialog manage-loan-dialog" id="day-close-dialog" aria-labelledby="day-close-title">
+    <form class="payment-form manage-loan-body" id="day-close-form">
+      <div class="dialog-handle" aria-hidden="true"></div>
+      <button class="dialog-close" type="button" id="close-day-close-dialog" aria-label="Cerrar">×</button>
+      <div class="manage-loan-header">
+        <p class="eyebrow" id="day-close-eyebrow">FINALIZAR JORNADA DE COBRO</p>
+        <h2 id="day-close-title">Cierre del día</h2>
+        <p class="muted" id="day-close-subtitle">Revisa el resumen de cobros, gastos y efectivo a entregar.</p>
+      </div>
+
+      <div class="manage-kpi-grid" id="day-close-kpi-grid"></div>
+
+      <div class="field">
+        <label for="day-close-counted">Efectivo físico contado en mano (opcional)</label>
+        <div class="input-prefix">
+          <span>$</span>
+          <input id="day-close-counted" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00">
+        </div>
+        <small class="field-hint" id="day-close-diff-hint">Ingresa el dinero en mano para verificar si cuadra con el saldo esperado.</small>
+      </div>
+
+      <div class="field">
+        <label for="day-close-notes">Novedades u observaciones del cierre (opcional)</label>
+        <textarea id="day-close-notes" rows="2" placeholder="Ej. Se entregó efectivo completo, 2 clientes pidieron cobro mañana."></textarea>
+      </div>
+
+      <div class="form-actions">
+        <button class="button button-outline" type="button" id="day-close-whatsapp-btn">📲 Enviar por WhatsApp</button>
+        <button class="button button-primary" type="submit" id="confirm-day-close-btn">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          <span>Confirmar cierre del día</span>
+        </button>
+      </div>
+    </form>
   </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
