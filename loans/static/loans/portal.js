@@ -705,12 +705,17 @@
     const labelsByCategory = {
       transport: "Transporte", food: "Alimentación", supplies: "Papelería e insumos", other: "Otro",
     };
-    document.getElementById("expense-rows").innerHTML = expenses.map((expense) =>
-      `<tr><td>${escapeHtml(displayDate(expense.spent_on))}</td>` +
-      `<td>${escapeHtml(expense.collector_name || "")}</td>` +
-      `<td>${escapeHtml(labelsByCategory[expense.category] || expense.category)}</td>` +
-      `<td>${escapeHtml(expense.description)}</td><td>${money(expense.amount)}</td></tr>`
-    ).join("");
+    document.getElementById("expense-rows").innerHTML = expenses.map((expense) => {
+      const detail = [expense.description, expense.notes].filter(Boolean).join(" · ")
+        || labelsByCategory[expense.category]
+        || "—";
+      return (
+        `<tr><td>${escapeHtml(displayDate(expense.spent_on))}</td>` +
+        `<td>${escapeHtml(expense.collector_name || "")}</td>` +
+        `<td>${escapeHtml(labelsByCategory[expense.category] || expense.category)}</td>` +
+        `<td>${escapeHtml(detail)}</td><td>${money(expense.amount)}</td></tr>`
+      );
+    }).join("");
     document.getElementById("expenses-empty").hidden = expenses.length > 0;
   }
 
@@ -1220,8 +1225,9 @@
   document.getElementById("tenant-join-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     clearMessages();
-    const form = new FormData(event.currentTarget);
-    const button = event.currentTarget.querySelector('button[type="submit"]');
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const button = formElement.querySelector('button[type="submit"]');
     setBusy(button, true, "Enviando…");
     try {
       const response = await rawRequest("/tenant-join-requests/", {
@@ -1230,7 +1236,7 @@
       });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(errorMessage(data, "No se pudo enviar la solicitud."));
-      event.currentTarget.reset();
+      formElement.reset();
       document.getElementById("tenant-status").textContent =
         `Solicitud enviada a ${data.tenant_name}. Espera la aprobación del propietario.`;
       document.getElementById("tenant-status").hidden = false;
@@ -1298,8 +1304,9 @@
 
   document.getElementById("cash-opening-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const button = event.currentTarget.querySelector('button[type="submit"]');
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const button = formElement.querySelector('button[type="submit"]');
     const data = {
       date: form.get("date"),
       opening_amount: form.get("opening_amount"),
@@ -1309,7 +1316,7 @@
     setBusy(button, true, "Guardando…");
     try {
       await api("/collector-daily-cash/", { method: "POST", body: JSON.stringify(data) });
-      event.currentTarget.reset();
+      formElement.reset();
       document.getElementById("cash-opening-date").value = localDateValue();
       updateCashOpeningPreview();
       await loadCashSummary();
@@ -1321,23 +1328,62 @@
     }
   });
 
+  const expenseCategorySelect = document.getElementById("expense-category");
+  const expenseDescriptionInput = document.getElementById("expense-description");
+  const expenseNotesInput = document.getElementById("expense-notes");
+  const expenseDescriptionLabel = document.getElementById("expense-description-label");
+  const expenseNotesLabel = document.getElementById("expense-notes-label");
+  const expenseAmountInput = document.getElementById("expense-amount");
+  const expenseAmountPreview = document.getElementById("expense-amount-preview");
+
+  function syncExpenseCategoryFields() {
+    const isOther = Boolean(expenseCategorySelect && expenseCategorySelect.value === "other");
+    if (expenseDescriptionInput) expenseDescriptionInput.required = isOther;
+    if (expenseNotesInput) expenseNotesInput.required = isOther;
+    if (expenseDescriptionLabel) {
+      expenseDescriptionLabel.textContent = isOther
+        ? "Descripción (obligatorio)"
+        : "Descripción (opcional)";
+    }
+    if (expenseNotesLabel) {
+      expenseNotesLabel.textContent = isOther
+        ? "Observaciones (obligatorio)"
+        : "Observaciones (opcional)";
+    }
+  }
+  function updateExpenseAmountPreview() {
+    if (!expenseAmountPreview || !expenseAmountInput) return;
+    const val = Number(expenseAmountInput.value || 0);
+    expenseAmountPreview.textContent = `Valor a registrar: ${money(val)}`;
+  }
+  if (expenseCategorySelect) {
+    expenseCategorySelect.addEventListener("change", syncExpenseCategoryFields);
+    syncExpenseCategoryFields();
+  }
+  if (expenseAmountInput) {
+    expenseAmountInput.addEventListener("input", updateExpenseAmountPreview);
+  }
+
   document.getElementById("expense-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const button = event.currentTarget.querySelector('button[type="submit"]');
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const button = formElement.querySelector('button[type="submit"]');
     const data = {
       spent_on: form.get("spent_on"),
       category: form.get("category"),
       description: String(form.get("description") || "").trim(),
       amount: form.get("amount"),
-      notes: form.get("notes") || "",
+      notes: String(form.get("notes") || "").trim(),
     };
     if ((rank[state.role] || 0) >= rank.manager) data.collector = form.get("collector");
     setBusy(button, true, "Guardando…");
     try {
       await api("/collector-expenses/", { method: "POST", body: JSON.stringify(data) });
-      event.currentTarget.reset();
+      formElement.reset();
       document.getElementById("expense-date").value = localDateValue();
+      syncExpenseCategoryFields();
+      updateExpenseAmountPreview();
       await loadCashSummary();
       showToast("Gasto registrado.");
     } catch (error) {

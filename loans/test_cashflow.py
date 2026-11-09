@@ -437,3 +437,62 @@ def test_daily_cash_post_updates_existing_collector_date_and_wsgi_stream_iterate
     assert any(b"event: ready" in chunk for chunk in chunks)
 
 
+
+
+@pytest.mark.django_db
+def test_collector_expense_allows_empty_description_except_when_category_is_other(
+    two_tenants, client_for, rls_context, seeded_tools
+):
+    tenant = two_tenants["tenant_a"]
+    owner = two_tenants["user_a"]
+    rls_context(owner, tenant)
+    enable_tool(tenant, Tool.objects.get(code="loans"))
+
+    collector_user = User.objects.create(email="expense-opt-collector@example.test")
+    Membership.objects.create(
+        user=collector_user, tenant=tenant, role=Membership.Role.EMPLOYEE
+    )
+    Employee.unscoped.create(
+        tenant=tenant, user=collector_user, full_name="Cobrador Gasto"
+    )
+
+    employee_client = client_for(collector_user, tenant)
+    today = timezone.localdate().isoformat()
+
+    transport_resp = employee_client.post(
+        reverse("collector-expense-list"),
+        {
+            "spent_on": today,
+            "category": "transport",
+            "amount": "5000.00",
+        },
+        format="json",
+    )
+    assert transport_resp.status_code == status.HTTP_201_CREATED
+    assert transport_resp.data["description"] == ""
+    assert transport_resp.data["notes"] == ""
+
+    other_invalid_resp = employee_client.post(
+        reverse("collector-expense-list"),
+        {
+            "spent_on": today,
+            "category": "other",
+            "amount": "8000.00",
+        },
+        format="json",
+    )
+    assert other_invalid_resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert "description" in other_invalid_resp.data
+
+    other_valid_resp = employee_client.post(
+        reverse("collector-expense-list"),
+        {
+            "spent_on": today,
+            "category": "other",
+            "description": "Impresión de recibos",
+            "amount": "8000.00",
+        },
+        format="json",
+    )
+    assert other_valid_resp.status_code == status.HTTP_201_CREATED
+    assert other_valid_resp.data["description"] == "Impresión de recibos"

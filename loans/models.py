@@ -259,7 +259,7 @@ class CollectorExpense(TenantOwnedModel):
     )
     spent_on = models.DateField(default=timezone.localdate)
     category = models.CharField(max_length=16, choices=CATEGORY_CHOICES, default="other")
-    description = models.CharField(max_length=240)
+    description = models.CharField(max_length=240, blank=True, default="")
     amount = models.DecimalField(max_digits=14, decimal_places=2)
     notes = models.TextField(blank=True, default="")
 

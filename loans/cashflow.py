@@ -64,6 +64,8 @@ class CollectorDailyCashSerializer(serializers.ModelSerializer):
 class CollectorExpenseSerializer(serializers.ModelSerializer):
     collector_name = serializers.CharField(source="collector.full_name", read_only=True)
     collector = serializers.PrimaryKeyRelatedField(queryset=Employee.unscoped.none(), required=False)
+    description = serializers.CharField(max_length=240, required=False, allow_blank=True, default="")
+    notes = serializers.CharField(required=False, allow_blank=True, default="")
     amount = serializers.DecimalField(max_digits=14, decimal_places=2, min_value=Decimal("0.01"))
 
     class Meta:
@@ -87,6 +89,15 @@ class CollectorExpenseSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({"collector": "El cobrador no pertenece al negocio activo."})
             if request.membership.role == "employee" and collector is not None and collector.user_id != request.user.pk:
                 raise serializers.ValidationError({"collector": "Solo puedes registrar tus propios gastos."})
+        category = attrs.get("category", getattr(self.instance, "category", "other"))
+        description = (attrs.get("description", getattr(self.instance, "description", "")) or "").strip()
+        notes = (attrs.get("notes", getattr(self.instance, "notes", "")) or "").strip()
+        if category == "other" and not description and not notes:
+            raise serializers.ValidationError(
+                {"description": "Cuando el tipo de gasto es 'Otro', la descripción u observaciones son obligatorias."}
+            )
+        attrs["description"] = description
+        attrs["notes"] = notes
         return attrs
 
 

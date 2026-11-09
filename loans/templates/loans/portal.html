@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'loans/portal.css' %}?v=20261109-5">
-  <script src="{% static 'loans/portal.js' %}?v=20261109-5" defer></script>
+  <link rel="stylesheet" href="{% static 'loans/portal.css' %}?v=20261109-6">
+  <script src="{% static 'loans/portal.js' %}?v=20261109-6" defer></script>
 </head>
 <body>
   <main class="app-shell" id="loan-app" data-api-base="/api/v1">
@@ -624,8 +624,8 @@
                   </div>
                   <div class="form-grid">
                     <div class="field">
-                      <label for="expense-description">Descripción</label>
-                      <input id="expense-description" name="description" maxlength="240" placeholder="Ej. gasolina para ruta" required>
+                      <label for="expense-description" id="expense-description-label">Descripción (opcional)</label>
+                      <input id="expense-description" name="description" maxlength="240" placeholder="Ej. gasolina para ruta">
                     </div>
                     <div class="field">
                       <label for="expense-amount">Valor</label>
@@ -633,10 +633,11 @@
                         <span>$</span>
                         <input id="expense-amount" name="amount" type="number" min="0.01" step="0.01" inputmode="decimal" placeholder="0.00" required>
                       </div>
+                      <small class="field-hint" id="expense-amount-preview">Valor a registrar: $ 0</small>
                     </div>
                   </div>
                   <div class="field">
-                    <label for="expense-notes">Observaciones (opcional)</label>
+                    <label for="expense-notes" id="expense-notes-label">Observaciones (opcional)</label>
                     <textarea id="expense-notes" name="notes" rows="2" placeholder="Detalle adicional o soporte"></textarea>
                   </div>
                   <button class="button button-primary button-wide" type="submit">Guardar gasto</button>
