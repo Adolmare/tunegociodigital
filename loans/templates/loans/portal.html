@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'loans/portal.css' %}?v=20261109-6">
-  <script src="{% static 'loans/portal.js' %}?v=20261109-6" defer></script>
+  <link rel="stylesheet" href="{% static 'loans/portal.css' %}?v=20261109-7">
+  <script src="{% static 'loans/portal.js' %}?v=20261109-7" defer></script>
 </head>
 <body>
   <main class="app-shell" id="loan-app" data-api-base="/api/v1">
@@ -41,14 +41,15 @@
               <label for="login-username">Usuario</label>
               <div class="input-icon-wrap">
                 <svg class="input-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                <input id="login-username" name="username" type="text" autocomplete="username" placeholder="Tu nombre de usuario" required>
+                <input id="login-username" name="username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Tu nombre de usuario" required>
               </div>
             </div>
             <div class="field">
               <label for="login-password">Contraseña</label>
-              <div class="input-icon-wrap">
+              <div class="input-icon-wrap has-toggle">
                 <svg class="input-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                 <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="Tu contraseña" required>
+                <button class="password-toggle-btn" type="button" data-toggle-password="login-password">Mostrar</button>
               </div>
             </div>
             <button class="button button-primary button-wide" type="submit">
@@ -75,27 +76,44 @@
             </div>
             <div class="field">
               <label for="register-full-name">Nombre completo</label>
-              <input id="register-full-name" name="full_name" type="text" maxlength="150" autocomplete="name" placeholder="Ej. Flavio Regino" required>
+              <input id="register-full-name" name="full_name" type="text" maxlength="150" autocomplete="name" placeholder="Ingresa tu nombre y apellido" required>
             </div>
             <div class="field">
               <label for="register-username">Usuario</label>
-              <input id="register-username" name="username" type="text" maxlength="150" autocomplete="username" placeholder="Ej. flavio" required>
+              <input id="register-username" name="username" type="text" maxlength="150" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Elige un nombre de usuario" required>
             </div>
             <div class="field">
               <label for="register-email">Correo electrónico</label>
-              <input id="register-email" name="email" type="email" autocomplete="email" placeholder="correo@ejemplo.com" required>
+              <input id="register-email" name="email" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="correo@ejemplo.com" required>
             </div>
             <div class="field">
               <label for="register-password">Contraseña</label>
-              <input id="register-password" name="password" type="password" autocomplete="new-password" minlength="8" placeholder="Mínimo 8 caracteres" required>
+              <div class="input-icon-wrap has-toggle">
+                <svg class="input-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <input id="register-password" name="password" type="password" autocomplete="new-password" minlength="8" placeholder="Mínimo 8 caracteres (letras y números)" required>
+                <button class="password-toggle-btn" type="button" data-toggle-password="register-password">Mostrar</button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="register-password-confirm">Confirmar contraseña</label>
+              <div class="input-icon-wrap has-toggle">
+                <svg class="input-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                <input id="register-password-confirm" name="password_confirm" type="password" autocomplete="new-password" minlength="8" placeholder="Repite tu contraseña" required>
+                <button class="password-toggle-btn" type="button" data-toggle-password="register-password-confirm">Mostrar</button>
+              </div>
+              <div class="password-checklist" id="password-checklist" aria-live="polite">
+                <span class="password-check-item" id="pwd-check-len">○ Mínimo 8 caracteres</span>
+                <span class="password-check-item" id="pwd-check-mix">○ Incluye letras y números</span>
+                <span class="password-check-item" id="pwd-check-match">○ Las contraseñas coinciden</span>
+              </div>
             </div>
             <div class="field" id="register-join-code-field">
               <label for="register-join-code">Código del negocio (entregado por el dueño)</label>
-              <input id="register-join-code" name="join_code" type="text" maxlength="10" autocomplete="off" placeholder="Ej. A1B2C3D4E5" required>
+              <input id="register-join-code" name="join_code" type="text" maxlength="10" autocomplete="off" autocapitalize="characters" placeholder="Ej. A1B2C3D4E5" required>
             </div>
             <div class="field" id="register-business-name-field" hidden>
               <label for="register-business-name">Nombre de tu negocio de préstamos</label>
-              <input id="register-business-name" name="business_name" type="text" maxlength="150" autocomplete="organization" placeholder="Ej. Inversiones Regino">
+              <input id="register-business-name" name="business_name" type="text" maxlength="150" autocomplete="organization" placeholder="Nombre de tu empresa o cartera">
             </div>
             <button class="button button-primary button-wide" id="register-submit-button" type="submit">
               <span id="register-submit-label">Crear cuenta y solicitar acceso</span>

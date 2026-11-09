@@ -73,8 +73,23 @@
     if (!data) return fallback;
     if (typeof data === "string") return data;
     if (data.detail) return data.detail;
-    const first = Object.values(data).flat(Infinity).find((value) => typeof value === "string");
-    return first || fallback;
+    const fieldNames = {
+      username: "Usuario",
+      email: "Correo",
+      full_name: "Nombre",
+      password: "Contraseña",
+      password_confirm: "Confirmación",
+      join_code: "Código del negocio",
+      business_name: "Nombre del negocio",
+    };
+    const parts = [];
+    Object.entries(data).forEach(([key, val]) => {
+      const msg = [val].flat(Infinity).find((item) => typeof item === "string");
+      if (!msg) return;
+      const label = fieldNames[key];
+      parts.push(label ? `${label}: ${msg}` : msg);
+    });
+    return parts.join(" · ") || fallback;
   }
 
   async function rawRequest(path, options = {}, authenticated = true) {
@@ -1048,7 +1063,7 @@
   const authTabRegister = document.getElementById("auth-tab-register");
 
   function syncRegisterRoleFields() {
-    const roleInput = document.getElementById("register-role");
+    const roleInput = document.getElementById("register-role-input");
     const role = (roleInput && roleInput.value) || "collector";
     const isOwnerRole = role === "owner";
     const joinField = document.getElementById("register-join-code-field");
@@ -1075,6 +1090,37 @@
     }
   }
 
+  const regPwdInput = document.getElementById("register-password");
+  const regPwdConfirmInput = document.getElementById("register-password-confirm");
+  function updatePasswordChecklist() {
+    const pwd = regPwdInput ? regPwdInput.value : "";
+    const confirm = regPwdConfirmInput ? regPwdConfirmInput.value : "";
+    const lenOk = pwd.length >= 8;
+    const mixOk = /[A-Za-z]/.test(pwd) && /[0-9]/.test(pwd);
+    const matchOk = pwd.length >= 8 && pwd === confirm;
+    const setCheck = (id, ok, text) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.toggle("is-met", ok);
+      el.textContent = `${ok ? "✓" : "○"} ${text}`;
+    };
+    setCheck("pwd-check-len", lenOk, "Mínimo 8 caracteres");
+    setCheck("pwd-check-mix", mixOk, "Incluye letras y números");
+    setCheck("pwd-check-match", matchOk, "Las contraseñas coinciden");
+  }
+  if (regPwdInput) regPwdInput.addEventListener("input", updatePasswordChecklist);
+  if (regPwdConfirmInput) regPwdConfirmInput.addEventListener("input", updatePasswordChecklist);
+
+  document.querySelectorAll("[data-toggle-password]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const input = document.getElementById(btn.dataset.togglePassword);
+      if (!input) return;
+      const showPlain = input.type === "password";
+      input.type = showPlain ? "text" : "password";
+      btn.textContent = showPlain ? "Ocultar" : "Mostrar";
+    });
+  });
+
   function toggleRegistration(show) {
     clearMessages();
     loginForm.hidden = show;
@@ -1100,6 +1146,7 @@
       authSubtitle.textContent = "Regístrate como cobrador con el código de tu jefe o crea tu propio negocio de préstamos.";
     }
     syncRegisterRoleFields();
+    updatePasswordChecklist();
   }
 
   if (registerToggle) registerToggle.addEventListener("click", () => toggleRegistration(true));
@@ -1108,7 +1155,7 @@
   document.getElementById("cancel-register").addEventListener("click", () => toggleRegistration(false));
   document.querySelectorAll("[data-register-role]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const roleInput = document.getElementById("register-role");
+      const roleInput = document.getElementById("register-role-input");
       if (roleInput) roleInput.value = btn.dataset.registerRole;
       syncRegisterRoleFields();
     });
@@ -1146,42 +1193,64 @@
     const button = registerForm.querySelector('button[type="submit"]');
     const form = new FormData(registerForm);
     const username = String(form.get("username") || "").trim();
+    const email = String(form.get("email") || "").trim().toLowerCase();
+    const fullName = String(form.get("full_name") || "").trim();
     const password = String(form.get("password") || "");
+    const passwordConfirm = String(form.get("password_confirm") || "");
     const registerRole = String(form.get("register_role") || "collector");
     const joinCode = String(form.get("join_code") || "").trim().toUpperCase();
     const businessName = String(form.get("business_name") || "").trim();
+
+    if (password.length < 8) {
+      showError("La contraseña debe tener al menos 8 caracteres.");
+      return;
+    }
+    if (/^\d+$/.test(password)) {
+      showError("Por seguridad, la contraseña no puede ser solo números; incluye al menos una letra.");
+      return;
+    }
+    if (password !== passwordConfirm) {
+      showError("Las contraseñas no coinciden. Verifícalas e inténtalo de nuevo.");
+      return;
+    }
+
     setBusy(button, true, "Creando cuenta…");
     try {
       const registration = await rawRequest("/auth/register/", {
         method: "POST",
         body: JSON.stringify({
           username,
-          email: String(form.get("email") || "").trim(),
-          full_name: String(form.get("full_name") || "").trim(),
+          email,
+          full_name: fullName,
           password,
+          password_confirm: passwordConfirm,
+          register_role: registerRole,
+          join_code: registerRole === "collector" ? joinCode : "",
+          business_name: registerRole === "owner" ? (businessName || `Cartera de ${fullName || username}`) : "",
         }),
       }, false);
       const registrationData = await registration.json().catch(() => null);
       if (!registration.ok) throw new Error(errorMessage(registrationData, "No se pudo crear la cuenta."));
-      const loginResponse = await rawRequest("/auth/login/", {
-        method: "POST",
-        body: JSON.stringify({ username, password }),
-      }, false);
-      const loginData = await loginResponse.json().catch(() => null);
-      if (!loginResponse.ok) throw new Error(errorMessage(loginData, "La cuenta se creó, pero no fue posible iniciar sesión."));
-      state.access = loginData.access;
-      state.refresh = loginData.refresh;
-      state.username = username;
+
+      state.access = registrationData.access;
+      state.refresh = registrationData.refresh;
+      state.username = registrationData.username || username;
       state.tenant = null;
       sessionStorage.setItem("loan_access", state.access);
       sessionStorage.setItem("loan_refresh", state.refresh);
-      sessionStorage.setItem("loan_username", username);
+      sessionStorage.setItem("loan_username", state.username);
+
+      registerForm.reset();
+      loginForm.reset();
+      updatePasswordChecklist();
+      toggleRegistration(false);
 
       if (registerRole === "owner") {
-        await createLendingBusiness(businessName || `Cartera de ${username}`);
-        registerForm.reset();
-        loginForm.reset();
-        toggleRegistration(false);
+        if (registrationData.tenant) {
+          await openWorkspace(registrationData.tenant);
+          showToast("¡Cuenta y negocio creados! Ya puedes operar.");
+          return;
+        }
         const memberships = getRows(await api("/auth/me/tenants/"));
         if (memberships.length) {
           await openWorkspace(memberships[0]);
@@ -1192,28 +1261,15 @@
         return;
       }
 
-      const joinResponse = await rawRequest("/tenant-join-requests/", {
-        method: "POST",
-        body: JSON.stringify({ join_code: joinCode }),
-      });
-      const joinData = await joinResponse.json().catch(() => null);
       setScreen("tenants");
-      if (!joinResponse.ok) {
-        document.getElementById("tenant-options").innerHTML =
-          '<p class="muted">Tu cuenta está creada. Corrige el código o solicita acceso a otro negocio.</p>';
-        showError(errorMessage(joinData, "No se pudo enviar la solicitud de acceso."));
-        toggleRegistration(false);
-        registerForm.reset();
-        return;
-      }
-      registerForm.reset();
-      loginForm.reset();
+      const targetName = (registrationData.join_request && registrationData.join_request.tenant_name) || "el negocio";
       document.getElementById("tenant-options").innerHTML =
-        '<p class="muted">Solicitud enviada. Podrás entrar al negocio cuando el propietario la acepte.</p>';
+        `<p class="muted">Solicitud enviada a <strong>${escapeHtml(targetName)}</strong>. Podrás entrar cuando el propietario la apruebe en "Solicitudes de empleados".</p>`;
       document.getElementById("tenant-join-code").value = "";
-      document.getElementById("tenant-status").textContent = "Cuenta creada y solicitud enviada al propietario.";
+      document.getElementById("tenant-status").textContent =
+        `Cuenta creada y solicitud enviada a ${targetName}.`;
       document.getElementById("tenant-status").hidden = false;
-      toggleRegistration(false);
+      showToast("Cuenta creada y solicitud enviada.");
     } catch (error) {
       setScreen("auth");
       showError(error.message);

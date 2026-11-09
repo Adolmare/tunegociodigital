@@ -137,3 +137,17 @@ REST_FRAMEWORK = {
         "tenant_join_request": "5/hour",
     },
 }
+
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+}
+
+REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"] = {
+    "register": "20/hour",
+    "login": "15/minute",
+    "tenant_join_request": "5/hour",
+}

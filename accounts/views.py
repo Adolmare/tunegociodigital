@@ -8,7 +8,12 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from tenants.join_requests import TenantJoinRequestCreateAPIView
 from tenants.models import Membership
 
-from .serializers import MeSerializer, MyMembershipSerializer, RegisterSerializer
+from .serializers import (
+    LoginSerializer,
+    MeSerializer,
+    MyMembershipSerializer,
+    RegisterSerializer,
+)
 
 
 class RegisterAPIView(generics.CreateAPIView):
@@ -20,6 +25,7 @@ class RegisterAPIView(generics.CreateAPIView):
 
 class LoginAPIView(TokenObtainPairView):
     permission_classes = [permissions.AllowAny]
+    serializer_class = LoginSerializer
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "login"
 
