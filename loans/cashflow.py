@@ -117,11 +117,17 @@ class CollectorDailyCashViewSet(ActionMinRoleMixin, TenantViewSet):
     def get_queryset(self):
         queryset = CollectorDailyCash.objects.select_related("collector")
         if self.request.membership.role == "employee":
-            queryset = queryset.filter(collector__user=self.request.user)
-        collector_id = self.request.query_params.get("collector")
+            collector = Employee.objects.filter(
+                user=self.request.user, is_active=True, deleted_at__isnull=True
+            ).first()
+            if collector is None:
+                return CollectorDailyCash.objects.none()
+            queryset = queryset.filter(collector=collector)
+        else:
+            collector_id = self.request.query_params.get("collector")
+            if collector_id:
+                queryset = queryset.filter(collector_id=collector_id)
         selected_date = self.request.query_params.get("date")
-        if collector_id:
-            queryset = queryset.filter(collector_id=collector_id)
         if selected_date:
             queryset = queryset.filter(date=selected_date)
         return queryset
@@ -181,12 +187,18 @@ class CollectorExpenseViewSet(ActionMinRoleMixin, TenantViewSet):
     def get_queryset(self):
         queryset = CollectorExpense.objects.select_related("collector")
         if self.request.membership.role == "employee":
-            queryset = queryset.filter(collector__user=self.request.user)
-        collector_id = self.request.query_params.get("collector")
+            collector = Employee.objects.filter(
+                user=self.request.user, is_active=True, deleted_at__isnull=True
+            ).first()
+            if collector is None:
+                return CollectorExpense.objects.none()
+            queryset = queryset.filter(collector=collector)
+        else:
+            collector_id = self.request.query_params.get("collector")
+            if collector_id:
+                queryset = queryset.filter(collector_id=collector_id)
         start = self.request.query_params.get("start")
         end = self.request.query_params.get("end")
-        if collector_id:
-            queryset = queryset.filter(collector_id=collector_id)
         if start:
             queryset = queryset.filter(spent_on__gte=start)
         if end:

@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'loans/portal.css' %}?v=20261109-8">
-  <script src="{% static 'loans/portal.js' %}?v=20261109-8" defer></script>
+  <link rel="stylesheet" href="{% static 'loans/portal.css' %}?v=20261109-9">
+  <script src="{% static 'loans/portal.js' %}?v=20261109-9" defer></script>
 </head>
 <body>
   <main class="app-shell" id="loan-app" data-api-base="/api/v1">
@@ -289,8 +289,8 @@
 
           <!-- VISTA: INICIO / RESUMEN -->
           <section class="view-panel" id="home-view" aria-label="Resumen de préstamos">
-            <div class="summary-grid">
-              <article class="summary-card summary-main">
+            <div class="summary-grid" id="home-summary-grid">
+              <article class="summary-card summary-main" id="main-kpi-card">
                 <div class="summary-card-top">
                   <span class="summary-icon" aria-hidden="true">
                     <svg class="icon" viewBox="0 0 24 24"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -521,7 +521,7 @@
 
           <!-- VISTA: CAJA Y GASTOS -->
           <section class="view-panel" id="cashflow-view" hidden aria-label="Caja y gastos del cobrador">
-            <section class="section-card">
+            <section class="section-card" id="cash-summary-owner-section">
               <div class="section-heading">
                 <div>
                   <h2>Cierre y cuadre de caja</h2>
@@ -702,8 +702,8 @@
             <section class="section-card">
               <div class="section-heading">
                 <div>
-                  <h2>Gastos del período</h2>
-                  <p class="muted">Cada gasto queda asociado a un cobrador y una fecha.</p>
+                  <h2 id="expenses-section-title">Gastos del período</h2>
+                  <p class="muted" id="expenses-section-subtitle">Cada gasto queda asociado a un cobrador y una fecha.</p>
                 </div>
               </div>
               <div class="ledger-table-wrap">

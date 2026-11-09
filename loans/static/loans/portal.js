@@ -377,11 +377,29 @@
     document.getElementById("new-loan-nav").hidden = isEmployee;
     document.getElementById("mobile-add-button").hidden = isEmployee;
     document.getElementById("desktop-new-button").hidden = isEmployee;
+    const mainKpiCard = document.getElementById("main-kpi-card");
+    if (mainKpiCard) mainKpiCard.hidden = isEmployee;
+    const homeSummaryGrid = document.getElementById("home-summary-grid");
+    if (homeSummaryGrid) homeSummaryGrid.classList.toggle("is-collector-grid", isEmployee);
     document.getElementById("home-portfolio-card").hidden = false;
     document.getElementById("home-loans-section").hidden = isEmployee;
     document.getElementById("home-collections-section").hidden = !isEmployee;
+    const cashSummaryOwnerSection = document.getElementById("cash-summary-owner-section");
+    if (cashSummaryOwnerSection) cashSummaryOwnerSection.hidden = isEmployee;
+    const cashflowForms = document.querySelector(".cashflow-forms");
+    if (cashflowForms) cashflowForms.classList.toggle("is-collector-forms", isEmployee);
     document.getElementById("cash-opening-section").hidden = isEmployee;
     document.getElementById("expense-collector-field").hidden = isEmployee;
+    const expensesSubtitle = document.getElementById("expenses-section-subtitle");
+    if (expensesSubtitle) {
+      expensesSubtitle.textContent = isEmployee
+        ? "Solo se muestran los gastos registrados en tu sesión de cobrador."
+        : "Cada gasto queda asociado a un cobrador y una fecha.";
+    }
+    const expenseRows = document.getElementById("expense-rows");
+    if (expenseRows) expenseRows.replaceChildren();
+    const cashSummaryRows = document.getElementById("cash-summary-rows");
+    if (cashSummaryRows) cashSummaryRows.replaceChildren();
     const cashExportBtn = document.getElementById("cash-export-excel");
     if (cashExportBtn) cashExportBtn.hidden = isEmployee;
     const openExcelDialogBtn = document.getElementById("open-excel-dialog-button");
@@ -1158,7 +1176,7 @@
       home: [isEmployee ? "Mi ruta de hoy" : "Resumen", isEmployee ? "Cuotas por cobrar hoy y personas cobradas en tu jornada." : "Una mirada clara a tus préstamos."],
       collections: ["Cobros de hoy", "Cuotas pendientes de tu cartera."],
       ledger: ["Libro de cartera", "Consulta el formato del Excel por período y frecuencia."],
-      cashflow: ["Caja y gastos", isEmployee ? "Registra tus gastos diarios y consulta tu balance de caja." : "Controla el dinero inicial, los cobros, los préstamos y los gastos."],
+      cashflow: ["Caja y gastos", isEmployee ? "Registra tus gastos diarios y consulta tus gastos del período." : "Controla el dinero inicial, los cobros, los préstamos y los gastos."],
       "customer-summary": ["Resumen por cliente", "Consulta la cartera consolidada y abre la amortización de cualquier cliente."],
       amortization: ["Amortización del cliente", "Plan de cuotas móvil, historial de pagos y opciones para compartir o descargar."],
       "employee-requests": ["Solicitudes de empleados", "Aprueba o rechaza las solicitudes de acceso al negocio."],
@@ -1176,7 +1194,14 @@
       loadEmployees();
     }
     if (view === "ledger") loadLedger();
-    if (view === "cashflow") loadCashSummary();
+    if (view === "cashflow") {
+      if (state.role === "employee") {
+        const expDate = (document.getElementById("expense-date") && document.getElementById("expense-date").value) || localDateValue();
+        loadExpenses(expDate, expDate);
+      } else {
+        loadCashSummary();
+      }
+    }
     if (view === "customer-summary") loadCustomerSummary();
     if (view === "employee-requests") loadEmployeeRequests();
     clearMessages();
@@ -1545,6 +1570,15 @@
   if (expenseAmountInput) {
     expenseAmountInput.addEventListener("input", updateExpenseAmountPreview);
   }
+  const expenseDateInput = document.getElementById("expense-date");
+  if (expenseDateInput) {
+    expenseDateInput.addEventListener("change", () => {
+      if (state.role === "employee" && state.view === "cashflow") {
+        const d = expenseDateInput.value || localDateValue();
+        loadExpenses(d, d);
+      }
+    });
+  }
 
   document.getElementById("expense-form").addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1566,7 +1600,12 @@
       document.getElementById("expense-date").value = localDateValue();
       syncExpenseCategoryFields();
       updateExpenseAmountPreview();
-      await loadCashSummary();
+      if (state.role === "employee") {
+        const expDate = document.getElementById("expense-date").value || localDateValue();
+        await loadExpenses(expDate, expDate);
+      } else {
+        await loadCashSummary();
+      }
       showToast("Gasto registrado.");
     } catch (error) {
       showError(error.message);
@@ -1734,7 +1773,14 @@
       showToast(`Cobro reversado: ${money(payload.amount)}.`);
     }
     loadDashboard();
-    if (state.view === "cashflow") loadCashSummary();
+    if (state.view === "cashflow") {
+      if (state.role === "employee") {
+        const expDate = (document.getElementById("expense-date") && document.getElementById("expense-date").value) || localDateValue();
+        loadExpenses(expDate, expDate);
+      } else {
+        loadCashSummary();
+      }
+    }
   }
 
   function showToast(message) {
@@ -1756,6 +1802,12 @@
     state.role = "";
     state.loans = [];
     state.collections = [];
+    state.collectedToday = { items: [], totalAmount: 0 };
+    state.cashSummary = null;
+    const expenseRows = document.getElementById("expense-rows");
+    if (expenseRows) expenseRows.replaceChildren();
+    const cashSummaryRows = document.getElementById("cash-summary-rows");
+    if (cashSummaryRows) cashSummaryRows.replaceChildren();
     if (showLogin) setScreen("auth");
   }
 

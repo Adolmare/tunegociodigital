@@ -131,3 +131,69 @@ def test_employee_cannot_create_opening_cash_and_expenses_auto_assign_collector(
     )
     assert expense_response.status_code == status.HTTP_201_CREATED
     assert expense_response.data["collector"] == collector.pk
+
+
+@pytest.mark.django_db
+def test_employee_only_sees_own_expenses_in_list(
+    two_tenants, client_for, rls_context, seeded_tools
+):
+    tenant = two_tenants["tenant_a"]
+    owner = two_tenants["user_a"]
+    rls_context(owner, tenant)
+    enable_tool(tenant, Tool.objects.get(code="loans"))
+
+    collector1_user = User.objects.create(email="collector1@example.test")
+    collector2_user = User.objects.create(email="collector2@example.test")
+    Membership.objects.create(
+        user=collector1_user, tenant=tenant, role=Membership.Role.EMPLOYEE
+    )
+    Membership.objects.create(
+        user=collector2_user, tenant=tenant, role=Membership.Role.EMPLOYEE
+    )
+    collector1 = Employee.unscoped.create(
+        tenant=tenant, user=collector1_user, full_name="Cobrador Uno"
+    )
+    collector2 = Employee.unscoped.create(
+        tenant=tenant, user=collector2_user, full_name="Cobrador Dos"
+    )
+
+    owner_client = client_for(owner, tenant)
+    owner_client.post(
+        reverse("collector-expense-list"),
+        {
+            "collector": str(collector1.pk),
+            "spent_on": date(2026, 11, 9).isoformat(),
+            "category": "transport",
+            "description": "Gasto Cobrador Uno",
+            "amount": "10000.00",
+        },
+        format="json",
+    )
+    owner_client.post(
+        reverse("collector-expense-list"),
+        {
+            "collector": str(collector2.pk),
+            "spent_on": date(2026, 11, 9).isoformat(),
+            "category": "food",
+            "description": "Gasto Cobrador Dos",
+            "amount": "20000.00",
+        },
+        format="json",
+    )
+
+    c1_client = client_for(collector1_user, tenant)
+    res = c1_client.get(reverse("collector-expense-list"))
+    assert res.status_code == status.HTTP_200_OK
+    rows = res.data["results"] if isinstance(res.data, dict) else res.data
+    assert len(rows) == 1
+    assert rows[0]["collector"] == collector1.pk
+    assert rows[0]["description"] == "Gasto Cobrador Uno"
+
+    # Even if collector1 tries to filter by collector2's ID, they only see their own
+    res_filtered = c1_client.get(
+        reverse("collector-expense-list") + f"?collector={collector2.pk}"
+    )
+    assert res_filtered.status_code == status.HTTP_200_OK
+    rows_filtered = res_filtered.data["results"] if isinstance(res_filtered.data, dict) else res_filtered.data
+    assert len(rows_filtered) == 1
+    assert rows_filtered[0]["collector"] == collector1.pk

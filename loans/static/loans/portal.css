@@ -2207,6 +2207,10 @@ textarea:focus-visible {
     gap: 16px;
   }
 
+  .summary-grid.is-collector-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .summary-main {
     grid-column: auto;
   }
@@ -2281,6 +2285,10 @@ textarea:focus-visible {
 
   .cashflow-forms {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cashflow-forms.is-collector-forms {
+    grid-template-columns: 1fr;
   }
 
   .form-card {
