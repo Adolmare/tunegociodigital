@@ -38,6 +38,11 @@ def test_loans_frontend_renders_mobile_portal(client):
     assert b"Usar GPS" not in response.content
     assert b"portal.css" in response.content
     assert b"portal.js" in response.content
+    assert b'id="excel-export-dialog"' in response.content
+    assert b'id="loan-manage-dialog"' in response.content
+    assert b'id="existing-customer-select"' in response.content
+    assert b'id="loan-collector-filter"' in response.content
+    assert b'id="customer-phone"' in response.content
 
 
 @pytest.mark.parametrize(

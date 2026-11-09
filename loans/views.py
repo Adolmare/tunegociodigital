@@ -87,7 +87,11 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
     serializer_class = LoanSerializer
 
     def get_queryset(self):
-        queryset = Loan.objects.all()
+        queryset = Loan.objects.select_related("customer", "collector").prefetch_related(
+            "schedule",
+            "payments__collector",
+            "payments__reversals",
+        )
         if self.request.membership.role == "employee":
             queryset = queryset.filter(collector__user=self.request.user)
         return queryset

@@ -227,6 +227,17 @@
     document.getElementById("customer-document").value = documentId;
     const phoneInput = document.getElementById("customer-phone");
     if (phoneInput) phoneInput.value = phone;
+    const renewalPill = document.getElementById("renewal-active-pill");
+    if (renewalPill) renewalPill.hidden = !(fullName || documentId);
+    const existingSelect = document.getElementById("existing-customer-select");
+    if (existingSelect && (documentId || fullName)) {
+      const optMatch = Array.from(existingSelect.options).find(
+        (opt) => opt.value && (opt.dataset.documentId === documentId || opt.dataset.fullName === fullName)
+      );
+      if (optMatch) existingSelect.value = optMatch.value;
+    } else if (existingSelect && !fullName && !documentId) {
+      existingSelect.value = "";
+    }
     const neighborhoodSelect = document.getElementById("customer-neighborhood");
     const otherNeighborhood = document.getElementById("customer-other-neighborhood");
     if (neighborhood) {
@@ -357,6 +368,10 @@
     document.getElementById("expense-collector-field").hidden = isEmployee;
     const cashExportBtn = document.getElementById("cash-export-excel");
     if (cashExportBtn) cashExportBtn.hidden = isEmployee;
+    const openExcelDialogBtn = document.getElementById("open-excel-dialog-button");
+    if (openExcelDialogBtn) openExcelDialogBtn.hidden = isEmployee;
+    const customerExportBtn = document.getElementById("customer-export-excel");
+    if (customerExportBtn) customerExportBtn.hidden = isEmployee;
     document.getElementById("mobile-cashflow-nav").hidden = false;
     document.getElementById("today-label").textContent = new Intl.DateTimeFormat("es", {
       weekday: "long",
@@ -368,6 +383,8 @@
     document.getElementById("ledger-period").value = "day";
     document.getElementById("ledger-frequency").value = "daily";
     document.getElementById("ledger-date").value = localDateValue(today);
+    const excelModalDate = document.getElementById("excel-modal-date");
+    if (excelModalDate) excelModalDate.value = localDateValue(today);
     ["cash-date", "cash-opening-date", "expense-date"].forEach((id) => {
       document.getElementById(id).value = localDateValue(today);
     });
@@ -393,24 +410,40 @@
     const paymentSelect = document.getElementById("payment-collector");
     const openingSelect = document.getElementById("cash-opening-collector");
     const expenseSelect = document.getElementById("expense-collector");
+    const filterSelect = document.getElementById("loan-collector-filter");
+    const manageSelect = document.getElementById("manage-collector-select");
     const selectedLoanCollector = loanSelect.value;
+    const selectedFilterCollector = filterSelect ? filterSelect.value : "";
     loanSelect.replaceChildren(new Option("Sin asignar", ""));
     paymentSelect.replaceChildren(new Option("Selecciona un cobrador", ""));
     openingSelect.replaceChildren(new Option("Selecciona un cobrador", ""));
     expenseSelect.replaceChildren(new Option("Selecciona un cobrador", ""));
+    if (filterSelect) {
+      filterSelect.replaceChildren(
+        new Option("Todos los cobradores", ""),
+        new Option("Sin cobrador asignado", "__none__"),
+      );
+    }
+    if (manageSelect) {
+      manageSelect.replaceChildren(new Option("Sin cobrador asignado", ""));
+    }
     state.employees.forEach((employee) => {
       const label = employee.full_name || employee.email || `Cobrador ${employee.id}`;
       loanSelect.add(new Option(label, employee.id));
       paymentSelect.add(new Option(label, employee.id));
       openingSelect.add(new Option(label, employee.id));
       expenseSelect.add(new Option(label, employee.id));
+      if (filterSelect) filterSelect.add(new Option(`Cobrador: ${label}`, employee.id));
+      if (manageSelect) manageSelect.add(new Option(label, employee.id));
     });
     loanSelect.value = selectedLoanCollector;
+    if (filterSelect) filterSelect.value = selectedFilterCollector;
     const manager = (rank[state.role] || 0) >= rank.manager;
     document.getElementById("collector-field").hidden = !manager;
     document.getElementById("payment-collector-field").hidden = !manager;
     document.getElementById("cash-opening-collector-field").hidden = !manager;
     document.getElementById("expense-collector-field").hidden = !manager;
+    if (filterSelect) filterSelect.hidden = !manager;
     openingSelect.required = manager;
     expenseSelect.required = manager;
   }
@@ -443,14 +476,20 @@
   function renderLoans() {
     elements.loans.replaceChildren();
     const searchInput = document.getElementById("loan-quick-search");
+    const collectorFilter = document.getElementById("loan-collector-filter");
     const query = (searchInput ? searchInput.value : "").trim().toLowerCase();
-    const filteredLoans = query
-      ? state.loans.filter((loan) =>
-          [loan.customer_name, loan.neighborhood, loan.document_id, loan.collector_name]
-            .some((field) => String(field || "").toLowerCase().includes(query))
-        )
-      : state.loans;
+    const selectedCollector = collectorFilter ? collectorFilter.value : "";
+    const filteredLoans = state.loans.filter((loan) => {
+      if (selectedCollector === "__none__" && loan.collector) return false;
+      if (selectedCollector && selectedCollector !== "__none__" && String(loan.collector || "") !== String(selectedCollector)) {
+        return false;
+      }
+      if (!query) return true;
+      return [loan.customer_name, loan.neighborhood, loan.document_id, loan.collector_name]
+        .some((field) => String(field || "").toLowerCase().includes(query));
+    });
     document.getElementById("loans-empty").hidden = filteredLoans.length > 0;
+    const isManager = (rank[state.role] || 0) >= rank.manager;
     filteredLoans.forEach((loan) => {
       const row = document.createElement("article");
       row.className = "loan-row";
@@ -473,7 +512,20 @@
           `<a class="contact-chip" target="_blank" rel="noopener" href="${escapeHtml(whatsappUrl(phone, `Hola ${name}, te escribimos de ${state.tenant ? state.tenant.tenant_name : "TuNegocio"}. Tu saldo pendiente es ${money(loan.balance)}.`))}">💬 WhatsApp</a>` +
           `</div>`
         : "";
-      const collectorMeta = loan.collector_name ? ` · Cobrador: ${escapeHtml(loan.collector_name)}` : "";
+      const collectorMeta = loan.collector_name
+        ? ` · Cobrador: ${escapeHtml(loan.collector_name)}`
+        : " · Sin cobrador";
+      const paymentsCount = Array.isArray(loan.payment_history) ? loan.payment_history.length : 0;
+      const manageBtnHtml =
+        `<button class="loan-action-secondary" type="button" data-manage-loan="${escapeHtml(loan.id)}">` +
+        `🧾 Gestionar / Abonos (${paymentsCount})</button>`;
+      const renewBtnHtml = isManager
+        ? `<button class="loan-action-secondary" type="button" data-renew-customer="1" ` +
+          `data-full-name="${escapeHtml(name)}" ` +
+          `data-document-id="${escapeHtml(loan.document_id || "")}" ` +
+          `data-phone="${escapeHtml(phone)}" ` +
+          `data-neighborhood="${escapeHtml(loan.neighborhood || "")}">＋ Renovar</button>`
+        : "";
       row.innerHTML =
         `<div class="loan-person"><span class="customer-avatar">${escapeHtml(initials(name))}</span>` +
         `<div><strong>${escapeHtml(name)}</strong><span>${escapeHtml(loan.neighborhood || "Sin barrio")}${collectorMeta}</span>` +
@@ -484,7 +536,8 @@
         `<div class="loan-detail"><strong>${collectionSummary}</strong><span>${paymentPlan}</span></div>` +
         `<button class="loan-action" type="button" data-payment-loan="${escapeHtml(loan.id)}" ` +
         `data-payment-name="${escapeHtml(name)}" data-payment-phone="${escapeHtml(phone)}" data-payment-suggested="${escapeHtml(suggested)}">Registrar pago</button>` +
-        `<span class="status-pill ${statusClass(loan.status)}">${escapeHtml(labels[loan.status] || loan.status)}</span>`;
+        `<span class="status-pill ${statusClass(loan.status)}">${escapeHtml(labels[loan.status] || loan.status)}</span>` +
+        `<div class="loan-row-actions">${manageBtnHtml}${renewBtnHtml}</div>`;
       elements.loans.append(row);
     });
   }
@@ -654,6 +707,147 @@
     document.getElementById("expenses-empty").hidden = expenses.length > 0;
   }
 
+  function findLoanById(loanId) {
+    const direct = state.loans.find((item) => String(item.id) === String(loanId));
+    if (direct) return direct;
+    if (state.customerSummary && Array.isArray(state.customerSummary.rows)) {
+      for (const customer of state.customerSummary.rows) {
+        const match = (customer.loans || []).find((item) => String(item.id) === String(loanId));
+        if (match) {
+          return {
+            ...match,
+            customer_name: customer.customer_name,
+            document_id: customer.customer_document,
+            customer_phone: customer.customer_phone,
+            neighborhood: customer.customer_neighborhood,
+            collector: match.collector_id,
+            paperwork_fee: match.paperwork,
+            start_date: match.date,
+            installment_schedule: match.installments,
+            payment_history: match.payments,
+          };
+        }
+      }
+    }
+    return null;
+  }
+
+  function openLoanManageDialog(loanId) {
+    const dialog = document.getElementById("loan-manage-dialog");
+    const loan = findLoanById(loanId);
+    if (!dialog || !loan) return;
+    state.activeManagedLoanId = String(loan.id);
+    const isOwner = state.role === "owner";
+    const isManager = (rank[state.role] || 0) >= rank.manager;
+    const name = loan.customer_name || "Cliente";
+    const phone = loan.customer_phone || "";
+    const doc = loan.document_id || "Sin cédula";
+    const neighborhood = loan.neighborhood || "Sin barrio";
+    const freqLabel = labels[loan.frequency] || loan.frequency || "Diario";
+
+    document.getElementById("manage-loan-eyebrow").textContent =
+      `CRÉDITO ${freqLabel.toUpperCase()} · INICIO ${displayDate(loan.start_date || loan.date || "")}`;
+    document.getElementById("manage-loan-title").textContent = name;
+    document.getElementById("manage-loan-subtitle").textContent = `${doc} · ${neighborhood}`;
+
+    const nextInstallment = (loan.installment_schedule || [])
+      .find((inst) => Number(inst.amount_paid) < Number(inst.amount_due));
+    const suggested = nextInstallment
+      ? Math.min(Number(nextInstallment.amount_due) - Number(nextInstallment.amount_paid), Number(loan.balance))
+      : Number(loan.balance);
+
+    const quickActions = [
+      `<button class="button button-primary button-sm" type="button" data-payment-loan="${escapeHtml(loan.id)}" ` +
+        `data-payment-name="${escapeHtml(name)}" data-payment-phone="${escapeHtml(phone)}" ` +
+        `data-payment-suggested="${escapeHtml(suggested)}">＋ Registrar abono</button>`,
+      isManager
+        ? `<button class="button button-outline button-sm" type="button" data-renew-customer="1" ` +
+          `data-full-name="${escapeHtml(name)}" data-document-id="${escapeHtml(loan.document_id || "")}" ` +
+          `data-phone="${escapeHtml(phone)}" data-neighborhood="${escapeHtml(loan.neighborhood || "")}">🔄 Renovar crédito</button>`
+        : "",
+      cleanPhoneForWhatsApp(phone)
+        ? `<a class="button button-quiet button-sm" href="tel:${escapeHtml(phone)}">📞 Llamar</a>` +
+          `<a class="button button-quiet button-sm" target="_blank" rel="noopener" href="${escapeHtml(whatsappUrl(phone, `Hola ${name}, te escribimos de ${state.tenant ? state.tenant.tenant_name : "TuNegocio"}. Tu saldo actual es ${money(loan.balance)}.`))}">💬 WhatsApp</a>`
+        : "",
+    ].filter(Boolean).join("");
+    document.getElementById("manage-quick-actions").innerHTML = quickActions;
+
+    const principal = Number(loan.principal || 0);
+    const totalPayable = Number(loan.total_payable || 0);
+    const interest = loan.interest !== undefined ? Number(loan.interest) : (totalPayable - principal);
+    const paperwork = Number(loan.paperwork_fee ?? loan.paperwork ?? 0);
+    const balance = Number(loan.balance || 0);
+    const collected = totalPayable - balance;
+
+    document.getElementById("manage-kpi-grid").innerHTML =
+      `<div class="manage-kpi-item"><span>Capital</span><strong>${money(principal)}</strong></div>` +
+      `<div class="manage-kpi-item"><span>Interés</span><strong>${money(interest)}</strong></div>` +
+      `<div class="manage-kpi-item"><span>Papelería</span><strong>${money(paperwork)}</strong></div>` +
+      `<div class="manage-kpi-item"><span>Total a pagar</span><strong>${money(totalPayable)}</strong></div>` +
+      `<div class="manage-kpi-item"><span>Total abonado</span><strong class="text-emerald">${money(collected)}</strong></div>` +
+      `<div class="manage-kpi-item"><span>Saldo pendiente</span><strong>${money(balance)}</strong></div>`;
+
+    const collectorBox = document.getElementById("manage-collector-box");
+    const collectorSelect = document.getElementById("manage-collector-select");
+    if (collectorBox && collectorSelect) {
+      collectorBox.hidden = !isManager;
+      collectorSelect.value = String(loan.collector || loan.collector_id || "");
+    }
+
+    const payments = loan.payment_history || loan.payments || [];
+    document.getElementById("manage-payments-count").textContent =
+      `${payments.length} ${payments.length === 1 ? "movimiento" : "movimientos"}`;
+    const paymentsList = document.getElementById("manage-payments-list");
+    const methodLabels = { cash: "Efectivo", transfer: "Transferencia", other: "Otro" };
+    if (!payments.length) {
+      paymentsList.innerHTML = `<p class="muted">Aún no se han registrado abonos individuales en este préstamo.</p>`;
+    } else {
+      paymentsList.innerHTML = payments.map((payment) => {
+        const isReversal = payment.direction === "reversal";
+        const isReversed = Boolean(payment.is_reversed);
+        const receiptText =
+          `Comprobante de abono - ${state.tenant ? state.tenant.tenant_name : "TuNegocio"}\n` +
+          `Cliente: ${name}\n` +
+          `Valor abonado: ${money(Math.abs(Number(payment.amount || 0)))}\n` +
+          `Fecha: ${displayDate(payment.date)}\n` +
+          `Saldo pendiente actual: ${money(balance)}`;
+        const receiptBtn = !isReversal && !isReversed
+          ? `<a class="button button-quiet button-xs" target="_blank" rel="noopener" href="${escapeHtml(whatsappUrl(phone, receiptText))}">📲 Recibo WhatsApp</a>`
+          : "";
+        const reverseControl = !isReversal
+          ? (isReversed
+              ? `<span class="status-pill status-cancelled">Reversado</span>`
+              : (isOwner
+                  ? `<button class="button button-danger-outline button-xs" type="button" data-reverse-payment="${escapeHtml(payment.id)}">↩ Reversar pago</button>`
+                  : `<span class="status-pill status-paid">Aplicado</span>`))
+          : `<span class="status-pill status-delinquent">Reversa</span>`;
+        return (
+          `<article class="payment-history-item ${isReversed ? "is-reversed" : ""}">` +
+          `<div class="payment-history-meta">` +
+          `<strong>${money(payment.amount)} · ${escapeHtml(isReversal ? "Reversa contable" : "Abono recibido")}</strong>` +
+          `<span>${escapeHtml(displayDate(payment.date))} · ${escapeHtml(methodLabels[payment.method] || payment.method || "Efectivo")}` +
+          `${payment.collector_name ? ` · Cobrador: ${escapeHtml(payment.collector_name)}` : ""}</span>` +
+          `</div>` +
+          `<div class="payment-history-actions">${receiptBtn}${reverseControl}</div>` +
+          `</article>`
+        );
+      }).join("");
+    }
+
+    const schedule = loan.installment_schedule || loan.installments || [];
+    document.getElementById("manage-installments-count").textContent = String(schedule.length);
+    document.getElementById("manage-installments-rows").innerHTML = schedule.map((inst) => {
+      const pending = inst.pending_amount ?? (Number(inst.amount_due || 0) - Number(inst.amount_paid || 0));
+      return (
+        `<tr><td>${escapeHtml(inst.number)}</td><td>${escapeHtml(displayDate(inst.due_date))}</td>` +
+        `<td>${money(inst.amount_due)}</td><td>${money(inst.amount_paid)}</td>` +
+        `<td>${money(pending)}</td><td>${escapeHtml(labels[inst.status] || inst.status)}</td></tr>`
+      );
+    }).join("");
+
+    if (!dialog.open) dialog.showModal();
+  }
+
   async function reversePayment(paymentId, button) {
     setBusy(button, true, "Reversando…");
     try {
@@ -661,10 +855,15 @@
         method: "POST",
         body: JSON.stringify({ reason: "Reversado desde el portal" }),
       });
-      await Promise.all([
-        loadCustomerSummary(state.customerSummaryPage || 1),
-        loadDashboard(),
-      ]);
+      const tasks = [loadDashboard()];
+      if (state.view === "customer-summary" || state.customerSummary) {
+        tasks.push(loadCustomerSummary(state.customerSummaryPage || 1));
+      }
+      await Promise.all(tasks);
+      const manageDialog = document.getElementById("loan-manage-dialog");
+      if (manageDialog && manageDialog.open && state.activeManagedLoanId) {
+        openLoanManageDialog(state.activeManagedLoanId);
+      }
       showToast("Pago reversado correctamente.");
     } catch (error) {
       showError(error.message);
@@ -673,19 +872,26 @@
     }
   }
 
-  async function assignLoanCollector(loanId, collectorId, selectEl) {
-    selectEl.disabled = true;
+  async function assignLoanCollector(loanId, collectorId, controlEl) {
+    if (controlEl) controlEl.disabled = true;
     try {
       await api(`/loans/${loanId}/`, {
         method: "PATCH",
         body: JSON.stringify({ collector: collectorId || null }),
       });
       await loadDashboard();
+      if (state.view === "customer-summary") {
+        await loadCustomerSummary(state.customerSummaryPage || 1);
+      }
+      const manageDialog = document.getElementById("loan-manage-dialog");
+      if (manageDialog && manageDialog.open && state.activeManagedLoanId) {
+        openLoanManageDialog(state.activeManagedLoanId);
+      }
       showToast("Cobrador asignado al préstamo.");
     } catch (error) {
       showError(error.message);
     } finally {
-      selectEl.disabled = false;
+      if (controlEl) controlEl.disabled = false;
     }
   }
 
@@ -739,7 +945,8 @@
           const collectorControl = isManager
             ? `<select class="collector-select-inline" data-assign-loan="${escapeHtml(loan.id)}" aria-label="Asignar cobrador">${collectorOptions}</select>`
             : (loan.collector_name ? `<span class="muted">Cobrador: ${escapeHtml(loan.collector_name)}</span>` : "");
-          return `<section class="amortization-loan"><div class="amortization-header"><h4>Préstamo ${escapeHtml(loan.date)} · ${escapeHtml(labels[loan.frequency] || loan.frequency)}</h4>${collectorControl}</div>` +
+          return `<section class="amortization-loan"><div class="amortization-header"><h4>Préstamo ${escapeHtml(loan.date)} · ${escapeHtml(labels[loan.frequency] || loan.frequency)}</h4>` +
+            `<div class="business-code-actions">${collectorControl}<button class="button button-outline button-xs" type="button" data-manage-loan="${escapeHtml(loan.id)}">🧾 Gestionar préstamo</button></div></div>` +
             `<p>Capital ${money(loan.principal)} · Interés ${money(loan.interest)} · Papelería ${money(loan.paperwork)} · Saldo ${money(loan.balance)}</p>` +
             `<div class="ledger-table-wrap"><table class="ledger-table"><thead><tr><th>CUOTA</th><th>VENCIMIENTO</th><th>VALOR</th><th>PAGADO</th><th>PENDIENTE</th><th>ESTADO</th></tr></thead><tbody>${installments}</tbody></table></div>` +
             `<h5>Historial de pagos</h5><div class="ledger-table-wrap"><table class="ledger-table"><thead><tr><th>FECHA</th><th>VALOR NETO</th><th>MOVIMIENTO</th><th>COBRADOR</th><th>MÉTODO</th><th>ACCIÓN</th></tr></thead><tbody>${paymentHistory}</tbody></table></div></section>`;
@@ -1197,10 +1404,14 @@
     const reject = event.target.closest("[data-request-reject]");
     const reverseBtn = event.target.closest("[data-reverse-payment]");
     const renewBtn = event.target.closest("[data-renew-customer]");
+    const manageBtn = event.target.closest("[data-manage-loan]");
     if (accept) decideEmployeeRequest(accept.dataset.requestAccept, "accept", accept);
     if (reject) decideEmployeeRequest(reject.dataset.requestReject, "reject", reject);
     if (reverseBtn) reversePayment(reverseBtn.dataset.reversePayment, reverseBtn);
+    if (manageBtn) openLoanManageDialog(manageBtn.dataset.manageLoan);
     if (renewBtn) {
+      const manageDialog = document.getElementById("loan-manage-dialog");
+      if (manageDialog && manageDialog.open) manageDialog.close();
       prefillCustomerForm({
         fullName: renewBtn.dataset.fullName || "",
         documentId: renewBtn.dataset.documentId || "",
@@ -1255,6 +1466,8 @@
   });
   const loanQuickSearch = document.getElementById("loan-quick-search");
   if (loanQuickSearch) loanQuickSearch.addEventListener("input", renderLoans);
+  const loanCollectorFilter = document.getElementById("loan-collector-filter");
+  if (loanCollectorFilter) loanCollectorFilter.addEventListener("change", renderLoans);
   const collectionQuickSearch = document.getElementById("collection-quick-search");
   if (collectionQuickSearch) collectionQuickSearch.addEventListener("input", renderCollections);
   const homeCollectionQuickSearch = document.getElementById("home-collection-quick-search");
@@ -1273,6 +1486,13 @@
         phone: opt.dataset.phone || "",
         neighborhood: opt.dataset.neighborhood || "",
       });
+    });
+  }
+  const clearRenewalBtn = document.getElementById("clear-renewal-button");
+  if (clearRenewalBtn) {
+    clearRenewalBtn.addEventListener("click", () => {
+      prefillCustomerForm({});
+      showToast("Formulario listo para nuevo cliente.");
     });
   }
   const chipSuggested = document.getElementById("chip-suggested-amount");
@@ -1432,6 +1652,100 @@
     });
   }
 
+  // Centro de exportación Excel (Modal por día, semana, quincena, mes o año)
+  const excelDialog = document.getElementById("excel-export-dialog");
+  const openExcelDialogBtn = document.getElementById("open-excel-dialog-button");
+  const customerExportBtn = document.getElementById("customer-export-excel");
+  function openExcelDialog(defaultPeriod = "day", defaultDate = localDateValue()) {
+    if (!excelDialog) return;
+    const periodSelect = document.getElementById("excel-modal-period");
+    const dateInput = document.getElementById("excel-modal-date");
+    if (periodSelect) periodSelect.value = defaultPeriod;
+    if (dateInput) dateInput.value = defaultDate;
+    document.querySelectorAll("[data-excel-period]").forEach((pill) => {
+      pill.classList.toggle("is-active", pill.dataset.excelPeriod === defaultPeriod);
+    });
+    excelDialog.showModal();
+  }
+  if (openExcelDialogBtn) {
+    openExcelDialogBtn.addEventListener("click", () => openExcelDialog("day", localDateValue()));
+  }
+  if (customerExportBtn) {
+    customerExportBtn.addEventListener("click", () => openExcelDialog("month", localDateValue()));
+  }
+  document.querySelectorAll("[data-excel-period]").forEach((pill) => {
+    pill.addEventListener("click", () => {
+      const period = pill.dataset.excelPeriod;
+      document.getElementById("excel-modal-period").value = period;
+      document.querySelectorAll("[data-excel-period]").forEach((item) => {
+        item.classList.toggle("is-active", item.dataset.excelPeriod === period);
+      });
+    });
+  });
+  const excelChipToday = document.getElementById("excel-chip-today");
+  if (excelChipToday) {
+    excelChipToday.addEventListener("click", () => {
+      document.getElementById("excel-modal-date").value = localDateValue(new Date());
+    });
+  }
+  const excelChipYesterday = document.getElementById("excel-chip-yesterday");
+  if (excelChipYesterday) {
+    excelChipYesterday.addEventListener("click", () => {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      document.getElementById("excel-modal-date").value = localDateValue(d);
+    });
+  }
+  const excelChipMonthStart = document.getElementById("excel-chip-month-start");
+  if (excelChipMonthStart) {
+    excelChipMonthStart.addEventListener("click", () => {
+      const d = new Date();
+      d.setDate(1);
+      document.getElementById("excel-modal-date").value = localDateValue(d);
+    });
+  }
+  const closeExcelDialog = document.getElementById("close-excel-dialog");
+  const cancelExcelDialog = document.getElementById("cancel-excel-dialog");
+  if (closeExcelDialog) closeExcelDialog.addEventListener("click", () => excelDialog.close());
+  if (cancelExcelDialog) cancelExcelDialog.addEventListener("click", () => excelDialog.close());
+  if (excelDialog) {
+    excelDialog.addEventListener("click", (event) => {
+      if (event.target === excelDialog) excelDialog.close();
+    });
+  }
+  const excelExportForm = document.getElementById("excel-export-form");
+  if (excelExportForm) {
+    excelExportForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const submitBtn = document.getElementById("submit-excel-export");
+      const params = new URLSearchParams({
+        period: document.getElementById("excel-modal-period").value || "day",
+        date: document.getElementById("excel-modal-date").value || localDateValue(),
+        frequency: document.getElementById("excel-modal-frequency").value || "all",
+      });
+      await downloadExcel(params, submitBtn);
+      if (excelDialog && excelDialog.open) excelDialog.close();
+    });
+  }
+
+  // Modal de gestión integral del préstamo
+  const manageLoanDialog = document.getElementById("loan-manage-dialog");
+  const closeManageLoan = document.getElementById("close-manage-loan");
+  if (closeManageLoan && manageLoanDialog) {
+    closeManageLoan.addEventListener("click", () => manageLoanDialog.close());
+    manageLoanDialog.addEventListener("click", (event) => {
+      if (event.target === manageLoanDialog) manageLoanDialog.close();
+    });
+  }
+  const saveManageCollectorBtn = document.getElementById("save-manage-collector");
+  if (saveManageCollectorBtn) {
+    saveManageCollectorBtn.addEventListener("click", () => {
+      if (!state.activeManagedLoanId) return;
+      const collectorId = document.getElementById("manage-collector-select").value;
+      assignLoanCollector(state.activeManagedLoanId, collectorId, saveManageCollectorBtn);
+    });
+  }
+
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-payment-loan]");
     if (button) openPayment(button);
@@ -1465,6 +1779,9 @@
       await api("/loan-payments/", { method: "POST", body: JSON.stringify(payment) });
       elements.dialog.close();
       await loadDashboard();
+      if (manageLoanDialog && manageLoanDialog.open && state.activeManagedLoanId) {
+        openLoanManageDialog(state.activeManagedLoanId);
+      }
       const updatedLoan = state.loans.find((item) => String(item.id) === String(loanId));
       const newBalance = updatedLoan ? Number(updatedLoan.balance || 0) : 0;
       const receiptText =

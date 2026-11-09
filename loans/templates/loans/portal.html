@@ -195,10 +195,16 @@
               <h1 id="view-title">Resumen</h1>
               <p class="muted" id="view-subtitle">Una mirada clara a tus préstamos.</p>
             </div>
-            <button class="button button-primary desktop-new-button" id="desktop-new-button" type="button" data-view="new-loan">
-              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
-              <span>Nuevo préstamo</span>
-            </button>
+            <div class="page-heading-actions">
+              <button class="button button-excel" id="open-excel-dialog-button" type="button" hidden>
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="m9 13 6 5"/><path d="m15 13-6 5"/></svg>
+                <span>Exportar Excel</span>
+              </button>
+              <button class="button button-primary desktop-new-button" id="desktop-new-button" type="button" data-view="new-loan">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                <span>Nuevo préstamo</span>
+              </button>
+            </div>
           </div>
 
           <div class="business-code" id="business-code-panel" hidden>
@@ -275,8 +281,11 @@
                 <div class="section-actions">
                   <div class="quick-search-wrap">
                     <svg class="input-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                    <input id="loan-quick-search" type="search" placeholder="Filtrar cliente o barrio…" aria-label="Filtrar préstamos">
+                    <input id="loan-quick-search" type="search" placeholder="Filtrar cliente, cédula o barrio…" aria-label="Filtrar préstamos">
                   </div>
+                  <select id="loan-collector-filter" class="filter-select-compact" aria-label="Filtrar por cobrador" hidden>
+                    <option value="">Todos los cobradores</option>
+                  </select>
                   <button class="button button-quiet" type="button" id="refresh-button" aria-label="Actualizar préstamos">
                     <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
                     <span class="desktop-only">Actualizar</span>
@@ -647,10 +656,16 @@
                   <label for="customer-summary-end">Hasta</label>
                   <input id="customer-summary-end" name="end" type="date">
                 </div>
-                <button class="button button-primary" type="submit" id="customer-summary-button">
-                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                  <span>Buscar</span>
-                </button>
+                <div class="filter-actions">
+                  <button class="button button-primary" type="submit" id="customer-summary-button">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                    <span>Buscar</span>
+                  </button>
+                  <button class="button button-outline" type="button" id="customer-export-excel">
+                    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span>Exportar Excel</span>
+                  </button>
+                </div>
               </form>
               <div class="ledger-table-wrap">
                 <table class="ledger-table customer-table">
@@ -717,8 +732,17 @@
                   <p class="muted">Selecciona un cliente frecuente para renovar o registra uno nuevo.</p>
                 </div>
               </div>
-              <div class="field">
-                <label for="existing-customer-select">¿Renovar o prestar a cliente existente? (opcional)</label>
+              <div class="renewal-card">
+                <div class="renewal-card-head">
+                  <div>
+                    <label for="existing-customer-select">¿Renovar o prestar a cliente existente?</label>
+                    <p class="muted">Autocompleta nombre, cédula, teléfono y barrio con un toque.</p>
+                  </div>
+                  <div class="renewal-active-pill" id="renewal-active-pill" hidden>
+                    <span>Modo renovación</span>
+                    <button class="text-link-xs" type="button" id="clear-renewal-button">Limpiar</button>
+                  </div>
+                </div>
                 <select id="existing-customer-select">
                   <option value="">＋ Nuevo cliente (ingresar datos manualmente)</option>
                 </select>
@@ -922,6 +946,128 @@
         </button>
       </div>
     </form>
+  </dialog>
+
+  <!-- MODAL: CENTRO DE EXPORTACIÓN EXCEL (DÍA, SEMANA, MES, AÑO) -->
+  <dialog class="payment-dialog" id="excel-export-dialog" aria-labelledby="excel-dialog-title">
+    <form class="payment-form" id="excel-export-form">
+      <div class="dialog-handle" aria-hidden="true"></div>
+      <button class="dialog-close" type="button" id="close-excel-dialog" aria-label="Cerrar">×</button>
+      <p class="eyebrow">REPORTE MULTI-HOJA (.XLSX)</p>
+      <h2 id="excel-dialog-title">Exportar a Excel</h2>
+      <p class="muted">Descarga Libro de Cartera, Cierre de Caja, Gastos y Abonos de cualquier fecha.</p>
+
+      <div class="field">
+        <label for="excel-modal-period">Rango del reporte</label>
+        <div class="period-segmented" id="excel-period-pills" role="group" aria-label="Seleccionar período">
+          <button class="period-pill is-active" type="button" data-excel-period="day">Día</button>
+          <button class="period-pill" type="button" data-excel-period="week">Semana</button>
+          <button class="period-pill" type="button" data-excel-period="fortnight">Quincena</button>
+          <button class="period-pill" type="button" data-excel-period="month">Mes</button>
+          <button class="period-pill" type="button" data-excel-period="year">Año</button>
+        </div>
+        <select id="excel-modal-period" name="period" hidden>
+          <option value="day" selected>Diario</option>
+          <option value="week">Semanal</option>
+          <option value="fortnight">Quincenal</option>
+          <option value="month">Mensual</option>
+          <option value="year">Anual</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="excel-modal-date">Fecha de referencia</label>
+        <input id="excel-modal-date" name="date" type="date" required>
+        <div class="payment-quick-chips">
+          <button class="chip-button" type="button" id="excel-chip-today">Hoy</button>
+          <button class="chip-button" type="button" id="excel-chip-yesterday">Ayer</button>
+          <button class="chip-button" type="button" id="excel-chip-month-start">Inicio de mes</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="excel-modal-frequency">Modalidad de préstamos en Libro de Cartera</label>
+        <select id="excel-modal-frequency" name="frequency">
+          <option value="all" selected>Todos (Diario, Semanal, Quincenal y Mensual)</option>
+          <option value="daily">Solo Diario</option>
+          <option value="weekly">Solo Semanal</option>
+          <option value="biweekly">Solo Quincenal</option>
+          <option value="monthly">Solo Mensual</option>
+        </select>
+      </div>
+
+      <div class="excel-sheets-preview">
+        <span>Hojas incluidas en el archivo:</span>
+        <div class="excel-sheet-tags">
+          <span>1. Libro de Cartera</span>
+          <span>2. Cierre de Caja</span>
+          <span>3. Gastos</span>
+          <span>4. Abonos del Período</span>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button class="button button-quiet" type="button" id="cancel-excel-dialog">Cancelar</button>
+        <button class="button button-excel" id="submit-excel-export" type="submit">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span>Descargar .xlsx</span>
+        </button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- MODAL: GESTIÓN DEL PRÉSTAMO, COBRADOR E HISTORIAL DE ABONOS -->
+  <dialog class="payment-dialog manage-loan-dialog" id="loan-manage-dialog" aria-labelledby="manage-loan-title">
+    <div class="payment-form manage-loan-body">
+      <div class="dialog-handle" aria-hidden="true"></div>
+      <button class="dialog-close" type="button" id="close-manage-loan" aria-label="Cerrar">×</button>
+      <div class="manage-loan-header">
+        <p class="eyebrow" id="manage-loan-eyebrow">GESTIÓN DE CRÉDITO</p>
+        <h2 id="manage-loan-title">Cliente</h2>
+        <p class="muted" id="manage-loan-subtitle">Documento · Barrio</p>
+      </div>
+
+      <div class="manage-quick-actions" id="manage-quick-actions"></div>
+
+      <div class="manage-kpi-grid" id="manage-kpi-grid"></div>
+
+      <div class="manage-collector-box" id="manage-collector-box" hidden>
+        <label for="manage-collector-select">Cobrador asignado a este préstamo</label>
+        <div class="manage-collector-row">
+          <select id="manage-collector-select">
+            <option value="">Sin cobrador asignado</option>
+          </select>
+          <button class="button button-outline button-sm" type="button" id="save-manage-collector">Guardar</button>
+        </div>
+      </div>
+
+      <div class="manage-section">
+        <div class="manage-section-head">
+          <h3>Historial de abonos y reversas</h3>
+          <span class="count-pill" id="manage-payments-count">0 movimientos</span>
+        </div>
+        <div class="manage-payments-list" id="manage-payments-list"></div>
+      </div>
+
+      <details class="manage-installments-details">
+        <summary>Ver plan de cuotas y vencimientos (<span id="manage-installments-count">0</span>)</summary>
+        <div class="ledger-table-wrap">
+          <table class="ledger-table">
+            <thead>
+              <tr>
+                <th>CUOTA</th>
+                <th>FECHA</th>
+                <th>VALOR</th>
+                <th>PAGADO</th>
+                <th>PENDIENTE</th>
+                <th>ESTADO</th>
+              </tr>
+            </thead>
+            <tbody id="manage-installments-rows"></tbody>
+          </table>
+        </div>
+      </details>
+    </div>
   </dialog>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>

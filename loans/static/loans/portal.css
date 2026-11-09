@@ -779,6 +779,342 @@ textarea:focus-visible {
   text-decoration: underline;
 }
 
+.page-heading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.button-excel {
+  border: 1.5px solid #166534;
+  background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+  color: #ffffff;
+  box-shadow: 0 6px 16px rgba(22, 163, 74, 0.24);
+}
+
+.button-excel:hover {
+  background: linear-gradient(135deg, #15803d 0%, #166534 100%);
+}
+
+.button-sm {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+
+.button-danger-outline {
+  border: 1px solid #fca5a5;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.button-danger-outline:hover {
+  background: #fee2e2;
+}
+
+.filter-select-compact {
+  min-height: 40px;
+  padding: 6px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.loan-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  grid-column: 1 / -1;
+  padding-top: 6px;
+  border-top: 1px dashed var(--line);
+}
+
+.loan-action-secondary {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 13px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.loan-action-secondary:hover {
+  border-color: var(--green-border);
+  background: var(--green-soft);
+  color: var(--green-dark);
+}
+
+/* Tarjeta de renovación en Nuevo Préstamo */
+.renewal-card {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  border: 1.5px dashed var(--green-border);
+  border-radius: var(--radius-md);
+  background: linear-gradient(120deg, var(--green-soft) 0%, var(--surface) 100%);
+}
+
+.renewal-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.renewal-card-head label {
+  display: block;
+  color: var(--green-dark);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.renewal-card-head .muted {
+  margin: 2px 0 0;
+  font-size: 12px;
+}
+
+.renewal-active-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--green-dark);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.text-link-xs {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #bbf7d0;
+  font-size: 11px;
+  font-weight: 800;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Selector segmentado de período en modal Excel */
+.period-segmented {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+}
+
+.period-pill {
+  min-height: 36px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.period-pill.is-active {
+  background: var(--green);
+  color: #ffffff;
+  box-shadow: var(--shadow-sm);
+}
+
+.excel-sheets-preview {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--green-border);
+  border-radius: var(--radius-sm);
+  background: var(--green-soft);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--green-dark);
+}
+
+.excel-sheet-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.excel-sheet-tags span {
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--green-dark);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Modal de gestión integral del préstamo */
+.manage-loan-dialog {
+  max-width: 620px;
+}
+
+.manage-loan-body {
+  display: grid;
+  gap: 16px;
+  max-height: 86vh;
+  overflow-y: auto;
+}
+
+.manage-loan-header h2 {
+  margin: 2px 0 4px;
+}
+
+.manage-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.manage-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.manage-kpi-item {
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+}
+
+.manage-kpi-item span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.manage-kpi-item strong {
+  display: block;
+  margin-top: 3px;
+  font-family: "Manrope", sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.manage-collector-box {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-subtle);
+}
+
+.manage-collector-box label {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink-secondary);
+}
+
+.manage-collector-row {
+  display: flex;
+  gap: 8px;
+}
+
+.manage-collector-row select {
+  flex: 1;
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 14px;
+}
+
+.manage-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.manage-section-head h3 {
+  margin: 0;
+  font-family: "Manrope", sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.manage-payments-list {
+  display: grid;
+  gap: 8px;
+}
+
+.payment-history-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.payment-history-item.is-reversed {
+  opacity: 0.72;
+  background: var(--surface-subtle);
+}
+
+.payment-history-meta strong {
+  display: block;
+  font-size: 14px;
+}
+
+.payment-history-meta span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.payment-history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.manage-installments-details {
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.manage-installments-details summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--green-dark);
+  margin-bottom: 10px;
+}
+
 /* ==========================================================================
    4. Tarjetas de Resumen (KPIs)
    ========================================================================== */

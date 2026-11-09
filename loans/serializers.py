@@ -126,6 +126,7 @@ class LoanSerializer(serializers.ModelSerializer):
         many=True,
         read_only=True,
     )
+    payment_history = serializers.SerializerMethodField()
     principal = serializers.DecimalField(
         max_digits=14,
         decimal_places=2,
@@ -219,6 +220,21 @@ class LoanSerializer(serializers.ModelSerializer):
         ).exists():
             return "delinquent"
         return obj.status
+
+    def get_payment_history(self, obj):
+        payments = obj.payments.all()
+        return [
+            {
+                "id": str(payment.id),
+                "date": timezone.localtime(payment.paid_at).date().isoformat(),
+                "amount": f"{(-payment.amount if payment.direction == 'reversal' else payment.amount):.2f}",
+                "direction": payment.direction,
+                "method": payment.method,
+                "collector_name": payment.collector.full_name if payment.collector else "",
+                "is_reversed": payment.direction == "payment" and bool(payment.reversals.all()),
+            }
+            for payment in payments
+        ]
 
     class Meta:
         model = Loan
