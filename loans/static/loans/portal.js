@@ -17,6 +17,7 @@
     view: "home",
     eventController: null,
     lastEventId: "",
+    seenEventIds: new Set(),
     toastTimer: null,
   };
   const rank = { employee: 1, manager: 2, admin: 3, owner: 4 };
@@ -676,12 +677,18 @@
       document.getElementById("cash-principal-total").textContent = money(totals.principal_lent);
       document.getElementById("cash-paperwork-total").textContent = money(totals.paperwork);
       document.getElementById("cash-expected-total").textContent = money(totals.expected_cash);
-      document.getElementById("cash-summary-rows").innerHTML = (report.rows || []).map((row) =>
-        `<tr><td>${escapeHtml(row.collector_name)}</td><td>${money(row.opening_cash)}</td>` +
-        `<td>${money(row.collected)}</td><td>${money(row.expenses)}</td>` +
-        `<td>${money(row.principal_lent)}</td><td>${money(row.paperwork)}</td>` +
-        `<td><strong>${money(row.expected_cash)}</strong></td></tr>`
-      ).join("");
+      const isManager = (rank[state.role] || 0) >= rank.manager;
+      document.getElementById("cash-summary-rows").innerHTML = (report.rows || []).map((row) => {
+        const editBtn = isManager
+          ? ` <button class="button button-quiet button-xs" type="button" data-edit-opening-collector="${escapeHtml(row.collector_id)}" data-edit-opening-amount="${escapeHtml(row.opening_cash)}" title="Modificar dinero inicial">✎</button>`
+          : "";
+        return (
+          `<tr><td>${escapeHtml(row.collector_name)}</td><td>${money(row.opening_cash)}${editBtn}</td>` +
+          `<td>${money(row.collected)}</td><td>${money(row.expenses)}</td>` +
+          `<td>${money(row.principal_lent)}</td><td>${money(row.paperwork)}</td>` +
+          `<td><strong>${money(row.expected_cash)}</strong></td></tr>`
+        );
+      }).join("");
       await loadExpenses(report.start_date, report.end_date);
     } catch (error) {
       showError(error.message);
@@ -1278,6 +1285,17 @@
     loadCustomerSummary(current + 1);
   });
 
+  const cashOpeningAmountInput = document.getElementById("cash-opening-amount");
+  const cashOpeningPreview = document.getElementById("cash-opening-preview");
+  function updateCashOpeningPreview() {
+    if (!cashOpeningPreview || !cashOpeningAmountInput) return;
+    const val = Number(cashOpeningAmountInput.value || 0);
+    cashOpeningPreview.textContent = `Valor a registrar: ${money(val)}`;
+  }
+  if (cashOpeningAmountInput) {
+    cashOpeningAmountInput.addEventListener("input", updateCashOpeningPreview);
+  }
+
   document.getElementById("cash-opening-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -1293,6 +1311,7 @@
       await api("/collector-daily-cash/", { method: "POST", body: JSON.stringify(data) });
       event.currentTarget.reset();
       document.getElementById("cash-opening-date").value = localDateValue();
+      updateCashOpeningPreview();
       await loadCashSummary();
       showToast("Dinero inicial registrado.");
     } catch (error) {
@@ -1397,8 +1416,12 @@
         ? `Cuota sugerida: ${money(suggested)}. Puedes cambiarla por el valor recibido.`
         : "No hay saldo pendiente para cobrar.";
     if ((rank[state.role] || 0) >= rank.manager) {
+      const collectorSelect = document.getElementById("payment-collector");
       document.getElementById("payment-collector-field").hidden = false;
-      document.getElementById("payment-collector").required = true;
+      collectorSelect.required = true;
+      if (loan && (loan.collector || loan.collector_id)) {
+        collectorSelect.value = String(loan.collector || loan.collector_id);
+      }
     } else {
       document.getElementById("payment-collector-field").hidden = true;
       document.getElementById("payment-collector").required = false;
@@ -1411,7 +1434,7 @@
     state.eventController = new AbortController();
     const { signal } = state.eventController;
     const connect = async () => {
-      let delay = 1500;
+      let delay = 2000;
       while (!signal.aborted && state.tenant) {
         try {
           const headers = new Headers({
@@ -1425,7 +1448,7 @@
           });
           if (response.status === 401 && await refreshToken()) continue;
           if (!response.ok || !response.body) throw new Error("No fue posible conectar las actualizaciones.");
-          delay = 1500;
+          delay = 2000;
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
           let buffer = "";
@@ -1442,7 +1465,7 @@
             }
           }
           if (!signal.aborted) {
-            await new Promise((resolve) => window.setTimeout(resolve, 4000));
+            await new Promise((resolve) => window.setTimeout(resolve, 6000));
           }
         } catch (error) {
           if (signal.aborted) return;
@@ -1455,15 +1478,27 @@
   }
 
   function handleStreamBlock(block) {
+    let blockId = "";
     let eventName = "";
     let data = "";
     block.split(/\r?\n/).forEach((line) => {
-      if (line.startsWith("id:")) state.lastEventId = line.slice(3).trim();
+      if (line.startsWith("id:")) blockId = line.slice(3).trim();
       if (line.startsWith("event:")) eventName = line.slice(6).trim();
       if (line.startsWith("data:")) data += line.slice(5).trim();
     });
+    if (blockId) {
+      const isZeroReady = blockId.endsWith("|00000000-0000-0000-0000-000000000000");
+      if (!isZeroReady || !state.lastEventId) {
+        state.lastEventId = blockId;
+      }
+    }
     if (!["loan.payment_received", "loan.payment_reversed"].includes(eventName) || !data) return;
     const event = JSON.parse(data);
+    if (event.id) {
+      const key = `${eventName}:${event.id}`;
+      if (state.seenEventIds.has(key)) return;
+      state.seenEventIds.add(key);
+    }
     const payload = event.payload || {};
     if (eventName === "loan.payment_received") {
       showToast(`Nuevo cobro recibido: ${money(payload.amount)}.`);
@@ -1533,10 +1568,26 @@
     const reverseBtn = event.target.closest("[data-reverse-payment]");
     const renewBtn = event.target.closest("[data-renew-customer]");
     const manageBtn = event.target.closest("[data-manage-loan]");
+    const editOpeningBtn = event.target.closest("[data-edit-opening-collector]");
     if (accept) decideEmployeeRequest(accept.dataset.requestAccept, "accept", accept);
     if (reject) decideEmployeeRequest(reject.dataset.requestReject, "reject", reject);
     if (reverseBtn) reversePayment(reverseBtn.dataset.reversePayment, reverseBtn);
     if (manageBtn) openLoanManageDialog(manageBtn.dataset.manageLoan);
+    if (editOpeningBtn) {
+      const collectorSelect = document.getElementById("cash-opening-collector");
+      const amountInput = document.getElementById("cash-opening-amount");
+      const dateInput = document.getElementById("cash-opening-date");
+      const cashDateFilter = document.getElementById("cash-date");
+      if (collectorSelect) collectorSelect.value = editOpeningBtn.dataset.editOpeningCollector;
+      if (dateInput && cashDateFilter && cashDateFilter.value) dateInput.value = cashDateFilter.value;
+      if (amountInput) {
+        amountInput.value = Number(editOpeningBtn.dataset.editOpeningAmount || 0);
+        updateCashOpeningPreview();
+        amountInput.focus();
+        amountInput.select();
+      }
+      showToast("Modifica el dinero inicial y pulsa Guardar.");
+    }
     if (renewBtn) {
       const manageDialog = document.getElementById("loan-manage-dialog");
       if (manageDialog && manageDialog.open) manageDialog.close();

@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'loans/portal.css' %}?v=20261109-4">
-  <script src="{% static 'loans/portal.js' %}?v=20261109-4" defer></script>
+  <link rel="stylesheet" href="{% static 'loans/portal.css' %}?v=20261109-5">
+  <script src="{% static 'loans/portal.js' %}?v=20261109-5" defer></script>
 </head>
 <body>
   <main class="app-shell" id="loan-app" data-api-base="/api/v1">
@@ -582,6 +582,7 @@
                       <span>$</span>
                       <input id="cash-opening-amount" name="opening_amount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" required>
                     </div>
+                    <small class="field-hint" id="cash-opening-preview">Valor a registrar: $ 0</small>
                   </div>
                   <div class="field">
                     <label for="cash-opening-notes">Nota (opcional)</label>

@@ -478,7 +478,7 @@ class LoanPaymentEventStreamView(TenantContextMixin, APIView):
 
         def sync_stream():
             nonlocal cursor
-            ready_id = f"{cursor.isoformat()}|00000000-0000-0000-0000-000000000000"
+            ready_id = last_event_id or f"{cursor.isoformat()}|00000000-0000-0000-0000-000000000000"
             yield f"id: {ready_id}\nevent: ready\ndata: {{}}\n\n"
             events = _read_payment_events(user_id, tenant_id, cursor, collector_id)
             for event in events:
