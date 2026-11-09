@@ -115,6 +115,21 @@ class CollectorDailyCashViewSet(ActionMinRoleMixin, TenantViewSet):
             queryset = queryset.filter(date=selected_date)
         return queryset
 
+    def create(self, request, *args, **kwargs):
+        collector_id = request.data.get("collector")
+        selected_date = request.data.get("date")
+        if collector_id and selected_date and request.membership.role != "employee":
+            existing = CollectorDailyCash.objects.filter(
+                collector_id=collector_id,
+                date=selected_date,
+            ).first()
+            if existing is not None:
+                serializer = self.get_serializer(existing, data=request.data)
+                serializer.is_valid(raise_exception=True)
+                self.perform_update(serializer)
+                return Response(serializer.data, status=status.HTTP_200_OK)
+        return super().create(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         if self.request.membership.role == "employee":
             collector = Employee.objects.filter(

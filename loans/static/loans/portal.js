@@ -1016,7 +1016,19 @@
     document.querySelectorAll(".view-panel").forEach((panel) => {
       panel.hidden = panel.id !== `${view}-view`;
     });
-  
+    document.querySelectorAll("[data-view]").forEach((button) => {
+      button.classList.toggle("is-active", button.dataset.view === view);
+    });
+    if (view === "new-loan" && (rank[state.role] || 0) >= rank.manager && !state.employees.length) {
+      loadEmployees();
+    }
+    if (view === "ledger") loadLedger();
+    if (view === "cashflow") loadCashSummary();
+    if (view === "customer-summary") loadCustomerSummary();
+    if (view === "employee-requests") loadEmployeeRequests();
+    clearMessages();
+  }
+
   const loginForm = document.getElementById("login-form");
   const registerForm = document.getElementById("register-form");
   const registerToggle = document.getElementById("show-register");
@@ -1190,19 +1202,6 @@
     }
   });
 
-  document.querySelectorAll("[data-view]").forEach((button) => {
-      button.classList.toggle("is-active", button.dataset.view === view);
-    });
-    if (view === "new-loan" && (rank[state.role] || 0) >= rank.manager && !state.employees.length) {
-      loadEmployees();
-    }
-    if (view === "ledger") loadLedger();
-    if (view === "cashflow") loadCashSummary();
-    if (view === "customer-summary") loadCustomerSummary();
-    if (view === "employee-requests") loadEmployeeRequests();
-    clearMessages();
-  }
-
   async function loadLedger() {
     const form = document.getElementById("ledger-filters");
     const button = document.getElementById("ledger-search");
@@ -1315,6 +1314,9 @@
               handleStreamBlock(block);
               boundary = buffer.indexOf("\n\n");
             }
+          }
+          if (!signal.aborted) {
+            await new Promise((resolve) => window.setTimeout(resolve, 4000));
           }
         } catch (error) {
           if (signal.aborted) return;

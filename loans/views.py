@@ -384,6 +384,19 @@ class LoanPaymentViewSet(ActionMinRoleMixin, TenantViewSet):
         )
 
 
+class _SSEStreamingHttpResponse(StreamingHttpResponse):
+    """StreamingHttpResponse para SSE compatible con ASGI y con WSGI (manage.py runserver)."""
+
+    def __init__(self, streaming_content=(), *args, sync_streaming_content=None, **kwargs):
+        super().__init__(streaming_content, *args, **kwargs)
+        self._sync_streaming_content = sync_streaming_content
+
+    def __iter__(self):
+        if self._sync_streaming_content is not None:
+            return map(self.make_bytes, self._sync_streaming_content())
+        return super().__iter__()
+
+
 class LoanPaymentEventStreamView(TenantContextMixin, APIView):
     permission_classes = [IsAuthenticated, HasTool, HasRole]
     required_tool = "loans"
@@ -463,7 +476,37 @@ class LoanPaymentEventStreamView(TenantContextMixin, APIView):
                     last_heartbeat = time.monotonic()
                 await asyncio.sleep(1)
 
-        response = StreamingHttpResponse(stream(), content_type="text/event-stream")
+        def sync_stream():
+            nonlocal cursor
+            ready_id = f"{cursor.isoformat()}|00000000-0000-0000-0000-000000000000"
+            yield f"id: {ready_id}\nevent: ready\ndata: {{}}\n\n"
+            events = _read_payment_events(user_id, tenant_id, cursor, collector_id)
+            for event in events:
+                occurred_at = event["occurred_at"]
+                if occurred_at > cursor:
+                    cursor = occurred_at
+                    seen_event_ids.clear()
+                if event["id"] in seen_event_ids:
+                    continue
+                seen_event_ids.add(event["id"])
+                data = {
+                    "id": str(event["id"]),
+                    "occurred_at": occurred_at.isoformat(),
+                    "payload": event["payload"],
+                }
+                event_id = f"{occurred_at.isoformat()}|{event['id']}"
+                event_type = event.get("event_name", "loan.payment_received")
+                yield (
+                    f"id: {event_id}\n"
+                    f"event: {event_type}\n"
+                    f"data: {json.dumps(data, separators=(',', ':'))}\n\n"
+                )
+
+        response = _SSEStreamingHttpResponse(
+            stream(),
+            sync_streaming_content=sync_stream,
+            content_type="text/event-stream",
+        )
         response["Cache-Control"] = "no-cache"
         response["X-Accel-Buffering"] = "no"
         return response

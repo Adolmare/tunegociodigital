@@ -388,3 +388,52 @@ def test_renew_loan_with_existing_customer_document_reuses_customer_and_updates_
     assert second_resp.data["customer_phone"] == "3009998877"
     assert Customer.unscoped.filter(tenant=tenant, document_id="DOC-999").count() == 1
 
+
+@pytest.mark.django_db
+def test_daily_cash_post_updates_existing_collector_date_and_wsgi_stream_iterates_cleanly(
+    two_tenants, client_for, rls_context, seeded_tools
+):
+    tenant = two_tenants["tenant_a"]
+    owner = two_tenants["user_a"]
+    rls_context(owner, tenant)
+    enable_tool(tenant, Tool.objects.get(code="loans"))
+
+    collector_user = User.objects.create(email="upsert-collector@example.test")
+    Membership.objects.create(
+        user=collector_user, tenant=tenant, role=Membership.Role.EMPLOYEE
+    )
+    collector = Employee.unscoped.create(
+        tenant=tenant, user=collector_user, full_name="Cobrador Upsert"
+    )
+
+    owner_client = client_for(owner, tenant)
+    today = timezone.localdate().isoformat()
+    first = owner_client.post(
+        reverse("collector-daily-cash-list"),
+        {"collector": str(collector.pk), "date": today, "opening_amount": "1000.00"},
+        format="json",
+    )
+    assert first.status_code == status.HTTP_201_CREATED
+
+    second = owner_client.post(
+        reverse("collector-daily-cash-list"),
+        {
+            "collector": str(collector.pk),
+            "date": today,
+            "opening_amount": "1500.00",
+            "notes": "Ajuste de base",
+        },
+        format="json",
+    )
+    assert second.status_code == status.HTTP_200_OK
+    assert second.data["id"] == first.data["id"]
+    assert second.data["opening_amount"] == "1500.00"
+    assert CollectorDailyCash.unscoped.filter(tenant=tenant, collector=collector, date=today).count() == 1
+
+    # Verifica que iterar el stream de forma síncrona (como hace runserver WSGI) no bloquea ni arroja 500
+    stream_resp = owner_client.get(reverse("loan-payment-events-stream"))
+    assert stream_resp.status_code == status.HTTP_200_OK
+    chunks = list(stream_resp)
+    assert any(b"event: ready" in chunk for chunk in chunks)
+
+
