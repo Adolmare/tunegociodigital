@@ -1032,20 +1032,101 @@
   const loginForm = document.getElementById("login-form");
   const registerForm = document.getElementById("register-form");
   const registerToggle = document.getElementById("show-register");
+  const authTabLogin = document.getElementById("auth-tab-login");
+  const authTabRegister = document.getElementById("auth-tab-register");
+
+  function syncRegisterRoleFields() {
+    const roleInput = document.getElementById("register-role");
+    const role = (roleInput && roleInput.value) || "collector";
+    const isOwnerRole = role === "owner";
+    const joinField = document.getElementById("register-join-code-field");
+    const joinInput = document.getElementById("register-join-code");
+    const bizField = document.getElementById("register-business-name-field");
+    const bizInput = document.getElementById("register-business-name");
+    const submitLabel = document.getElementById("register-submit-label");
+    document.querySelectorAll("[data-register-role]").forEach((btn) => {
+      btn.classList.toggle("is-active", btn.dataset.registerRole === role);
+    });
+    if (joinField) joinField.hidden = isOwnerRole;
+    if (joinInput) joinInput.required = !registerForm.hidden && !isOwnerRole;
+    if (bizField) bizField.hidden = !isOwnerRole;
+    if (bizInput) bizInput.required = !registerForm.hidden && isOwnerRole;
+    if (submitLabel) {
+      submitLabel.textContent = isOwnerRole
+        ? "Crear cuenta y mi negocio"
+        : "Crear cuenta y enviar solicitud";
+    }
+    if (!registerForm.hidden) {
+      document.getElementById("login-title").innerHTML = isOwnerRole
+        ? "Crea tu cuenta<br>y tu negocio."
+        : "Crea tu cuenta<br>de cobrador.";
+    }
+  }
 
   function toggleRegistration(show) {
+    clearMessages();
     loginForm.hidden = show;
     loginForm.querySelectorAll("input, button").forEach((field) => { field.disabled = show; });
     registerForm.hidden = !show;
     registerForm.querySelectorAll("input, button").forEach((field) => { field.disabled = !show; });
-    registerToggle.hidden = show;
-    document.getElementById("login-title").innerHTML = show
-      ? "Crea tu cuenta<br>de cobrador."
-      : "Tus préstamos,<br>más cerca.";
+    if (registerToggle) registerToggle.hidden = show;
+    if (authTabLogin) {
+      authTabLogin.classList.toggle("is-active", !show);
+      authTabLogin.setAttribute("aria-selected", String(!show));
+    }
+    if (authTabRegister) {
+      authTabRegister.classList.toggle("is-active", show);
+      authTabRegister.setAttribute("aria-selected", String(show));
+    }
+    const authSubtitle = document.getElementById("auth-subtitle");
+    if (!show) {
+      document.getElementById("login-title").innerHTML = "Tus préstamos,<br>más cerca.";
+      if (authSubtitle) {
+        authSubtitle.textContent = "Consulta saldos, cobra en ruta y lleva el control diario desde cualquier celular o computador.";
+      }
+    } else if (authSubtitle) {
+      authSubtitle.textContent = "Regístrate como cobrador con el código de tu jefe o crea tu propio negocio de préstamos.";
+    }
+    syncRegisterRoleFields();
   }
 
-  registerToggle.addEventListener("click", () => toggleRegistration(true));
+  if (registerToggle) registerToggle.addEventListener("click", () => toggleRegistration(true));
+  if (authTabLogin) authTabLogin.addEventListener("click", () => toggleRegistration(false));
+  if (authTabRegister) authTabRegister.addEventListener("click", () => toggleRegistration(true));
   document.getElementById("cancel-register").addEventListener("click", () => toggleRegistration(false));
+  document.querySelectorAll("[data-register-role]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const roleInput = document.getElementById("register-role");
+      if (roleInput) roleInput.value = btn.dataset.registerRole;
+      syncRegisterRoleFields();
+    });
+  });
+
+  function buildBusinessSlug(name) {
+    const base = String(name || "negocio")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 38) || "negocio";
+    const suffix = Math.random().toString(36).slice(2, 7);
+    return `${base}-${suffix}`;
+  }
+
+  async function createLendingBusiness(businessName) {
+    const response = await rawRequest("/tenants/", {
+      method: "POST",
+      body: JSON.stringify({
+        name: businessName,
+        slug: buildBusinessSlug(businessName),
+        business_type: "prestamista",
+      }),
+    });
+    const data = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(errorMessage(data, "No se pudo crear el negocio."));
+    return data;
+  }
 
   registerForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1054,7 +1135,9 @@
     const form = new FormData(registerForm);
     const username = String(form.get("username") || "").trim();
     const password = String(form.get("password") || "");
+    const registerRole = String(form.get("register_role") || "collector");
     const joinCode = String(form.get("join_code") || "").trim().toUpperCase();
+    const businessName = String(form.get("business_name") || "").trim();
     setBusy(button, true, "Creando cuenta…");
     try {
       const registration = await rawRequest("/auth/register/", {
@@ -1081,6 +1164,22 @@
       sessionStorage.setItem("loan_access", state.access);
       sessionStorage.setItem("loan_refresh", state.refresh);
       sessionStorage.setItem("loan_username", username);
+
+      if (registerRole === "owner") {
+        await createLendingBusiness(businessName || `Cartera de ${username}`);
+        registerForm.reset();
+        loginForm.reset();
+        toggleRegistration(false);
+        const memberships = getRows(await api("/auth/me/tenants/"));
+        if (memberships.length) {
+          await openWorkspace(memberships[0]);
+          showToast("¡Cuenta y negocio creados! Ya puedes operar.");
+          return;
+        }
+        await loadTenants();
+        return;
+      }
+
       const joinResponse = await rawRequest("/tenant-join-requests/", {
         method: "POST",
         body: JSON.stringify({ join_code: joinCode }),
@@ -1134,6 +1233,33 @@
       setBusy(button, false);
     }
   });
+
+  const tenantCreateForm = document.getElementById("tenant-create-form");
+  if (tenantCreateForm) {
+    tenantCreateForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      clearMessages();
+      const form = new FormData(tenantCreateForm);
+      const businessName = String(form.get("name") || "").trim();
+      const button = tenantCreateForm.querySelector('button[type="submit"]');
+      setBusy(button, true, "Creando negocio…");
+      try {
+        await createLendingBusiness(businessName);
+        tenantCreateForm.reset();
+        const memberships = getRows(await api("/auth/me/tenants/"));
+        if (memberships.length) {
+          await openWorkspace(memberships[memberships.length - 1]);
+          showToast("Negocio creado correctamente.");
+          return;
+        }
+        await loadTenants();
+      } catch (error) {
+        showError(error.message);
+      } finally {
+        setBusy(button, false);
+      }
+    });
+  }
 
   document.getElementById("cash-summary-filters").addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1431,7 +1557,9 @@
     }
   });
   document.getElementById("logout-button").addEventListener("click", () => logout());
-  document.getElementById("topbar-avatar").addEventListener("click", () => logout());
+  const topbarLogoutBtn = document.getElementById("topbar-logout-button");
+  if (topbarLogoutBtn) topbarLogoutBtn.addEventListener("click", () => logout());
+  document.getElementById("topbar-avatar").addEventListener("click", () => loadTenants());
   document.getElementById("mobile-logout").addEventListener("click", () => logout());
   document.getElementById("tenant-logout").addEventListener("click", () => logout());
 

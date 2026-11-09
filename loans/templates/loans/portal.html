@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'loans/portal.css' %}">
-  <script src="{% static 'loans/portal.js' %}" defer></script>
+  <link rel="stylesheet" href="{% static 'loans/portal.css' %}?v=20261109-4">
+  <script src="{% static 'loans/portal.js' %}?v=20261109-4" defer></script>
 </head>
 <body>
   <main class="app-shell" id="loan-app" data-api-base="/api/v1">
@@ -27,7 +27,13 @@
             <p class="eyebrow">GESTIÓN DE CARTERA</p>
           </div>
           <h1 id="login-title">Tus préstamos,<br>más cerca.</h1>
-          <p class="muted">Inicia sesión para administrar tu cartera, ruta diaria y cierres de caja.</p>
+          <p class="muted" id="auth-subtitle">Inicia sesión o crea tu cuenta para administrar tu cartera, ruta diaria y cierres de caja.</p>
+
+          <div class="auth-mode-tabs" role="tablist" aria-label="Modo de acceso">
+            <button class="auth-tab is-active" id="auth-tab-login" type="button" role="tab" aria-selected="true">Iniciar sesión</button>
+            <button class="auth-tab" id="auth-tab-register" type="button" role="tab" aria-selected="false">Crear cuenta</button>
+          </div>
+
           <div class="notice notice-error" id="auth-error" role="alert" hidden></div>
 
           <form id="login-form" class="stack">
@@ -53,12 +59,20 @@
 
           <button class="text-button" id="show-register" type="button">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6"/><path d="M22 11h-6"/></svg>
-            <span>¿Eres cobrador? Crea una cuenta con código de negocio</span>
+            <span>¿No tienes cuenta? Regístrate como dueño o cobrador</span>
           </button>
 
           <div class="notice" id="auth-status" role="status" aria-live="polite" hidden></div>
 
           <form id="register-form" class="stack" hidden>
+            <div class="field">
+              <label>¿Cómo deseas registrarte?</label>
+              <div class="period-segmented register-role-switch" role="group" aria-label="Tipo de registro">
+                <button class="period-pill is-active" type="button" data-register-role="collector">Soy Cobrador</button>
+                <button class="period-pill" type="button" data-register-role="owner">Soy Dueño (Nuevo negocio)</button>
+              </div>
+              <input id="register-role-input" name="register_role" type="hidden" value="collector">
+            </div>
             <div class="field">
               <label for="register-full-name">Nombre completo</label>
               <input id="register-full-name" name="full_name" type="text" maxlength="150" autocomplete="name" placeholder="Ej. Flavio Regino" required>
@@ -75,12 +89,16 @@
               <label for="register-password">Contraseña</label>
               <input id="register-password" name="password" type="password" autocomplete="new-password" minlength="8" placeholder="Mínimo 8 caracteres" required>
             </div>
-            <div class="field">
-              <label for="register-join-code">Código del negocio</label>
-              <input id="register-join-code" name="join_code" type="text" maxlength="10" autocomplete="off" placeholder="Código entregado por el dueño" required>
+            <div class="field" id="register-join-code-field">
+              <label for="register-join-code">Código del negocio (entregado por el dueño)</label>
+              <input id="register-join-code" name="join_code" type="text" maxlength="10" autocomplete="off" placeholder="Ej. A1B2C3D4E5" required>
             </div>
-            <button class="button button-primary button-wide" type="submit">
-              <span>Crear cuenta y solicitar acceso</span>
+            <div class="field" id="register-business-name-field" hidden>
+              <label for="register-business-name">Nombre de tu negocio de préstamos</label>
+              <input id="register-business-name" name="business_name" type="text" maxlength="150" autocomplete="organization" placeholder="Ej. Inversiones Regino">
+            </div>
+            <button class="button button-primary button-wide" id="register-submit-button" type="submit">
+              <span id="register-submit-label">Crear cuenta y solicitar acceso</span>
               <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
             </button>
             <button class="text-button" id="cancel-register" type="button">Volver a iniciar sesión</button>
@@ -106,19 +124,30 @@
             <p class="eyebrow">TU ESPACIO DE TRABAJO</p>
           </div>
           <h1 id="tenant-title">Elige tu negocio</h1>
-          <p class="muted">Selecciona la empresa cuya cartera quieres consultar hoy.</p>
+          <p class="muted">Selecciona tu empresa activa, únete con código o crea un nuevo negocio.</p>
           <div class="notice notice-error" id="tenant-error" role="alert" hidden></div>
           <div id="tenant-options" class="tenant-options"></div>
           <div class="notice" id="tenant-status" role="status" aria-live="polite" hidden></div>
           <div class="form-divider"></div>
+          <form id="tenant-create-form" class="stack">
+            <div class="field">
+              <label for="tenant-create-name">¿Eres dueño? Crea un nuevo negocio de préstamos</label>
+              <input id="tenant-create-name" name="name" type="text" maxlength="150" placeholder="Nombre del negocio (ej. Inversiones del Norte)" required>
+            </div>
+            <button class="button button-primary button-wide" type="submit">Crear mi negocio y entrar</button>
+          </form>
+          <div class="form-divider"></div>
           <form id="tenant-join-form" class="stack">
             <div class="field">
-              <label for="tenant-join-code">¿Tienes un código de invitación?</label>
+              <label for="tenant-join-code">¿Eres cobrador y tienes un código de invitación?</label>
               <input id="tenant-join-code" name="join_code" type="text" maxlength="10" autocomplete="off" placeholder="Escribe el código del negocio" required>
             </div>
             <button class="button button-outline button-wide" type="submit">Solicitar acceso como cobrador</button>
           </form>
-          <button class="text-button" id="tenant-logout" type="button">Cerrar sesión</button>
+          <button class="button button-quiet button-wide" id="tenant-logout" type="button">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            <span>Cerrar sesión</span>
+          </button>
         </div>
       </div>
     </section>
@@ -168,8 +197,9 @@
             <strong id="sidebar-user-name">Tu cuenta</strong>
             <span id="sidebar-tenant-name">Tu negocio</span>
           </div>
-          <button class="icon-button" id="logout-button" type="button" aria-label="Cerrar sesión" title="Cerrar sesión">
+          <button class="button button-quiet button-xs" id="logout-button" type="button" aria-label="Cerrar sesión" title="Cerrar sesión">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            <span>Salir</span>
           </button>
         </div>
       </aside>
@@ -185,7 +215,11 @@
             <span class="online-dot" aria-hidden="true"></span>
             <span id="topbar-tenant-name">Tu negocio</span>
           </div>
-          <button class="avatar avatar-small" id="topbar-avatar" type="button" aria-label="Cerrar sesión" title="Cerrar sesión">T</button>
+          <button class="avatar avatar-small" id="topbar-avatar" type="button" aria-label="Cambiar de negocio" title="Cambiar de negocio">T</button>
+          <button class="button button-quiet button-xs topbar-logout-btn" id="topbar-logout-button" type="button" aria-label="Cerrar sesión" title="Cerrar sesión">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            <span>Salir</span>
+          </button>
         </header>
 
         <div class="content">
