@@ -8,6 +8,7 @@ from django.urls import include, path
 from django.views.generic import RedirectView
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from administration.views import PlatformAdminPanelView
 from barbershop.frontend import BarberPortalView
 from loans.frontend import LoanPortalView
 
@@ -23,8 +24,11 @@ urlpatterns = [
     path("health/", health_check, name="health-check"),
     path("loans/", LoanPortalView.as_view(), name="loans-frontend"),
     path("barberia/", BarberPortalView.as_view(), name="barbershop-frontend"),
+    path("panel/", PlatformAdminPanelView.as_view(), name="platform-admin-panel"),
     path("admin/", admin.site.urls),
     path("api/v1/auth/", include("accounts.urls")),
+    path("api/v1/admin/", include("administration.urls")),
+    path("api/v1/admin-panel/", include("administration.urls")),
     path("api/v1/", include("tenants.urls")),
     path("api/v1/", include("customers.urls")),
     path("api/v1/", include("employees.urls")),

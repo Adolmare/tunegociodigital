@@ -312,38 +312,47 @@
     sessionStorage.setItem("loan_access", state.access);
     sessionStorage.setItem("loan_refresh", state.refresh);
     sessionStorage.setItem("loan_username", username);
+    if (data.is_staff) sessionStorage.setItem("is_staff", "true");
+    if (data.is_superuser) sessionStorage.setItem("is_superuser", "true");
+    const adminLink = document.getElementById("topbar-admin-link");
+    if (adminLink) {
+      const isAdmin = data.is_staff || data.is_superuser;
+      adminLink.style.display = isAdmin ? "inline-flex" : "none";
+    }
     await loadTenants();
   }
 
   async function loadTenants() {
     try {
-      const memberships = getRows(await api("/auth/me/tenants/"));
-      if (!memberships.length) {
-        setScreen("tenants");
-        document.getElementById("tenant-options").innerHTML =
-          '<p class="muted">Tu usuario todavía no tiene una empresa activa. Si ya solicitaste acceso con un código, espera la aprobación del propietario.</p>';
-        return;
-      }
+      const allMemberships = getRows(await api("/auth/me/tenants/"));
+      const loanMemberships = allMemberships.filter((m) => {
+        const tools = m.enabled_tools || [];
+        return tools.includes("loans") || m.tenant_business_type === "prestamista";
+      });
+
       const options = document.getElementById("tenant-options");
       options.replaceChildren();
-      memberships.forEach((membership) => {
-        const typeCode = membership.tenant_business_type || "prestamista";
-        const isBarber = typeCode === "barberia";
-        const typeBadge = isBarber ? "💈 Barbería" : "💰 Préstamos";
+
+      if (!loanMemberships.length) {
+        setScreen("tenants");
+        options.innerHTML =
+          '<div class="notice notice-error" style="display:block;"><strong>Módulo no habilitado</strong><br>Tu cuenta no tiene habilitado el módulo de Préstamos. Solicita a tu administrador de TuNegocio Digital que active este módulo para poder ingresar.</div>';
+        const createForm = document.getElementById("tenant-create-form");
+        if (createForm) createForm.hidden = true;
+        return;
+      }
+
+      const createForm = document.getElementById("tenant-create-form");
+      if (createForm) createForm.hidden = false;
+
+      loanMemberships.forEach((membership) => {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "tenant-choice";
         button.innerHTML =
           `<div><strong>${escapeHtml(membership.tenant_name)}</strong>` +
-          `<span><small style="color:var(--accent);font-weight:600;">${escapeHtml(typeBadge)}</small> · ${escapeHtml(membership.role)}</span></div><span aria-hidden="true">→</span>`;
-        button.addEventListener("click", () => {
-          if (isBarber) {
-            sessionStorage.setItem("barber_tenant", membership.tenant_id);
-            window.location.href = "/barberia/";
-          } else {
-            openWorkspace(membership);
-          }
-        });
+          `<span>${escapeHtml(membership.role)}</span></div><span aria-hidden="true">→</span>`;
+        button.addEventListener("click", () => openWorkspace(membership));
         options.append(button);
       });
       setScreen("tenants");
@@ -367,6 +376,11 @@
     document.getElementById("topbar-avatar").textContent = initials(displayName);
     const isOwner = state.role === "owner";
     const isEmployee = state.role === "employee";
+    const adminLink = document.getElementById("topbar-admin-link");
+    if (adminLink) {
+      const isAdmin = sessionStorage.getItem("is_staff") === "true" || sessionStorage.getItem("is_superuser") === "true";
+      adminLink.style.display = isAdmin ? "inline-flex" : "none";
+    }
     document.getElementById("business-code-panel").hidden = !isOwner;
     document.getElementById("business-join-code").textContent = membership.tenant_join_code || "—";
     document.getElementById("ledger-nav").hidden = !isOwner;
@@ -1552,25 +1566,13 @@
       clearMessages();
       const form = new FormData(tenantCreateForm);
       const businessName = String(form.get("name") || "").trim();
-      const businessType = String(form.get("business_type") || "prestamista");
       const button = tenantCreateForm.querySelector('button[type="submit"]');
       setBusy(button, true, "Creando negocio…");
       try {
-        const res = await createBusiness(businessName, businessType);
+        await createLendingBusiness(businessName);
         tenantCreateForm.reset();
-        if (businessType === "barberia") {
-          sessionStorage.setItem("barber_tenant", res.tenant ? res.tenant.id : "");
-          showToast("Barbería creada. Abriendo módulo de Barbería…");
-          setTimeout(() => { window.location.href = "/barberia/"; }, 400);
-          return;
-        }
-        const memberships = getRows(await api("/auth/me/tenants/"));
-        if (memberships.length) {
-          await openWorkspace(memberships[memberships.length - 1]);
-          showToast("Negocio creado correctamente.");
-          return;
-        }
         await loadTenants();
+        showToast("Negocio de préstamos creado correctamente.");
       } catch (error) {
         showError(error.message);
       } finally {

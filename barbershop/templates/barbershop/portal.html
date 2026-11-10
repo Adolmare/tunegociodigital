@@ -28,19 +28,7 @@
 
         <div class="notice notice-error" id="auth-error" role="alert" hidden></div>
 
-        <!-- Onboarding para usuario existente sin barbería -->
-        <div id="onboarding-no-shop" class="card stack" hidden style="margin-top: 1rem; text-align: left;">
-          <h2 style="font-size: 1.1rem; margin: 0;">¡Hola, <span id="onboarding-username"></span>!</h2>
-          <p class="muted" style="margin: 0;">Detectamos tu cuenta de TuNegocio Digital. Aún no tienes una barbería registrada.</p>
-          <div id="onboarding-businesses-list" class="stack" style="gap: 0.5rem;"></div>
-          <div style="margin: 0.5rem 0; border-top: 1px solid var(--border);"></div>
-          <form id="onboarding-create-form" class="stack">
-            <label class="field"><span>Nombre de tu nueva barbería</span>
-              <input id="onboarding-shop-name" name="name" maxlength="150" placeholder="Ej. Barbería TuNegocio Style" required>
-            </label>
-            <button class="btn btn-primary btn-wide" type="submit">Crear barbería y entrar</button>
-          </form>
-        </div>
+
 
         <form id="login-form" class="stack" autocomplete="on">
           <label class="field"><span>Usuario o correo</span>
@@ -84,7 +72,7 @@
           </div>
         </div>
         <div class="topbar-actions" style="display: flex; gap: 8px; align-items: center;">
-          <button class="btn btn-quiet btn-sm" id="btn-switch-business" type="button" title="Ver mis negocios y módulos">⇄ Cambiar negocio</button>
+          <a href="/panel/" class="btn btn-quiet btn-sm" id="topbar-admin-link" title="Panel de Administración" style="display: none; color: var(--accent); font-weight: 700; text-decoration: none;">⚙️ Panel Admin</a>
           <button class="btn btn-ghost btn-sm" id="logout-button" type="button">Salir</button>
         </div>
       </header>
@@ -192,33 +180,7 @@
       </div>
     </section>
 
-    <!-- DIÁLOGO: CAMBIAR NEGOCIO / MÓDULOS -->
-    <dialog id="switch-dialog">
-      <div class="dialog-form" style="max-width: 440px;">
-        <div class="dialog-head">
-          <h2>Tus negocios</h2>
-          <button class="btn btn-ghost btn-sm" type="button" data-close>✕</button>
-        </div>
-        <p class="muted" style="margin-top: 0; font-size: 0.9rem;">Cambia entre tus negocios o módulos de TuNegocio Digital.</p>
-        <div id="switch-business-list" class="stack" style="gap: 0.6rem; margin: 0.5rem 0 1rem 0;"></div>
-        <div style="margin: 0.75rem 0; border-top: 1px solid var(--border);"></div>
-        <form id="switch-create-form" class="stack">
-          <h3 style="font-size: 0.95rem; margin: 0;">＋ Crear nuevo negocio</h3>
-          <div class="grid-2">
-            <label class="field"><span>Módulo</span>
-              <select name="business_type" id="switch-create-type">
-                <option value="barberia">💈 Barbería</option>
-                <option value="prestamista">💰 Préstamos</option>
-              </select>
-            </label>
-            <label class="field"><span>Nombre</span>
-              <input name="name" id="switch-create-name" maxlength="150" placeholder="Nombre comercial" required>
-            </label>
-          </div>
-          <button class="btn btn-primary btn-wide" type="submit">Crear y acceder</button>
-        </form>
-      </div>
-    </dialog>
+
 
     <!-- DIÁLOGO: NUEVA CITA -->
     <dialog id="appointment-dialog">

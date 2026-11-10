@@ -42,6 +42,8 @@ class LoginSerializer(TokenObtainPairSerializer):
         data["username"] = self.user.username
         data["full_name"] = self.user.full_name
         data["email"] = self.user.email
+        data["is_staff"] = self.user.is_staff
+        data["is_superuser"] = self.user.is_superuser
         return data
 
 
@@ -268,6 +270,12 @@ class MyMembershipSerializer(serializers.ModelSerializer):
     tenant_business_type = serializers.CharField(
         source="tenant.business_type.code", read_only=True, default=""
     )
+    enabled_tools = serializers.SerializerMethodField()
+
+    def get_enabled_tools(self, obj):
+        return list(
+            obj.tenant.tools.filter(is_enabled=True).values_list("tool__code", flat=True)
+        )
 
     def get_tenant_join_code(self, obj):
         if obj.role in {Membership.Role.OWNER, Membership.Role.ADMIN}:
@@ -284,4 +292,5 @@ class MyMembershipSerializer(serializers.ModelSerializer):
             "tenant_currency",
             "tenant_business_type",
             "role",
+            "enabled_tools",
         )

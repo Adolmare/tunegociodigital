@@ -1,0 +1,169 @@
+{% load static %}<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0d0f12">
+  <title>Panel de Administración | TuNegocio Digital</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Manrope:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'administration/panel.css' %}?v=20261110-1">
+  <script src="{% static 'administration/panel.js' %}?v=20261110-1" defer></script>
+</head>
+<body>
+  <div id="admin-app" data-api-base="/api/v1">
+
+    <!-- LOGIN SCREEN FOR NON-LOGGED IN ADMIN -->
+    <section id="auth-screen" class="auth-screen" hidden>
+      <div class="auth-card">
+        <div class="brand">
+          <span class="brand-badge">🛡️</span>
+          <div>
+            <strong>TuNegocio Digital</strong>
+            <small>Panel de Administración</small>
+          </div>
+        </div>
+        <h1>Acceso Administrativo</h1>
+        <p class="muted">Solo usuarios administradores de plataforma pueden acceder a la gestión de módulos.</p>
+        <div class="notice notice-error" id="auth-error" role="alert" hidden></div>
+        <form id="admin-login-form" class="stack">
+          <label class="field">
+            <span>Usuario o correo</span>
+            <input name="username" required autocomplete="username">
+          </label>
+          <label class="field">
+            <span>Contraseña</span>
+            <input name="password" type="password" required autocomplete="current-password">
+          </label>
+          <button class="btn btn-primary btn-wide" type="submit">Ingresar al panel</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ADMIN DASHBOARD -->
+    <section id="dashboard-screen" class="dashboard-screen" hidden>
+      <header class="topbar">
+        <div class="topbar-brand">
+          <span class="brand-badge">🛡️</span>
+          <div>
+            <h1>TuNegocio Digital <span class="badge badge-admin">Superadmin</span></h1>
+            <p class="muted">Administración de Módulos y Empresas por Usuario</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <div class="portal-links">
+            <a href="/loans/" class="portal-link" title="Abrir módulo de Préstamos">💰 Préstamos</a>
+            <a href="/barberia/" class="portal-link" title="Abrir módulo de Barbería">💈 Barbería</a>
+          </div>
+          <div class="admin-user-pill">
+            <span class="online-indicator"></span>
+            <span id="admin-username">Admin</span>
+          </div>
+          <button class="btn btn-ghost btn-sm" id="btn-logout" type="button">Salir</button>
+        </div>
+      </header>
+
+      <main class="panel-content">
+        <!-- KPIS -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <span class="kpi-icon">👥</span>
+            <div>
+              <p class="kpi-label">Usuarios Registrados</p>
+              <h2 id="kpi-users" class="kpi-value">0</h2>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-icon">🏢</span>
+            <div>
+              <p class="kpi-label">Empresas Creadas</p>
+              <h2 id="kpi-tenants" class="kpi-value">0</h2>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-icon">💰</span>
+            <div>
+              <p class="kpi-label">Módulo Préstamos Activo</p>
+              <h2 id="kpi-loans" class="kpi-value">0</h2>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-icon">💈</span>
+            <div>
+              <p class="kpi-label">Módulo Barbería Activo</p>
+              <h2 id="kpi-barbershop" class="kpi-value">0</h2>
+            </div>
+          </div>
+        </div>
+
+        <!-- USERS & MODULES TABLE -->
+        <div class="card table-card">
+          <div class="card-toolbar">
+            <div class="search-box">
+              <span class="search-icon">🔍</span>
+              <input id="user-search" type="search" placeholder="Buscar por nombre, usuario o email..." autocomplete="off">
+            </div>
+            <div class="filter-actions">
+              <button class="btn btn-quiet btn-sm" id="btn-refresh" type="button">↻ Actualizar</button>
+            </div>
+          </div>
+
+          <div class="notice notice-info" id="status-notice" hidden></div>
+
+          <div class="table-wrap">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Usuario</th>
+                  <th>Negocios Asignados</th>
+                  <th class="text-center">💰 Préstamos</th>
+                  <th class="text-center">💈 Barbería</th>
+                  <th class="text-center">🍽️ Restaurante</th>
+                  <th class="text-center">🚗 Lavadero</th>
+                  <th class="text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="users-table-body">
+                <tr><td colspan="7" class="text-center muted" style="padding: 2rem;">Cargando usuarios...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </main>
+    </section>
+
+    <!-- MODAL: CREAR NEGOCIO PARA USUARIO -->
+    <dialog id="create-tenant-dialog">
+      <form id="create-tenant-form" class="dialog-form">
+        <div class="dialog-head">
+          <h2 id="dialog-title">Asignar Nuevo Negocio</h2>
+          <button class="btn btn-ghost btn-sm" type="button" data-close>✕</button>
+        </div>
+        <input type="hidden" name="user_id" id="modal-user-id">
+        <p class="muted">Crea un nuevo negocio y actívale el módulo correspondiente al usuario <strong id="modal-user-name"></strong>.</p>
+        
+        <label class="field">
+          <span>Módulo / Tipo de Negocio</span>
+          <select name="business_type" id="modal-business-type" required>
+            <option value="prestamista">💰 Préstamos y Cobranza</option>
+            <option value="barberia">💈 Barbería y Peluquería</option>
+            <option value="restaurante">🍽️ Restaurante</option>
+            <option value="lavadero">🚗 Lavadero</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>Nombre del Negocio</span>
+          <input name="name" id="modal-business-name" maxlength="150" placeholder="Ej. Barbería San Diego o Inversiones Alfa" required>
+        </label>
+
+        <div class="notice notice-error" id="modal-error" hidden></div>
+        <button class="btn btn-primary btn-wide" type="submit">Crear y Activar Módulo</button>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  </div>
+</body>
+</html>

@@ -159,52 +159,35 @@
     setScreen("auth");
   }
 
-  function renderOnboardingBusinesses(memberships) {
-    const list = $("onboarding-businesses-list");
-    if (!list) return;
-    list.replaceChildren();
-    if (!memberships.length) return;
-    memberships.forEach((m) => {
-      const row = document.createElement("div");
-      row.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg-soft);border-radius:6px;";
-      row.innerHTML =
-        `<div><strong>${escapeHtml(m.tenant_name)}</strong><br><small style="color:var(--accent);">💰 Préstamos</small></div>` +
-        `<button class="btn btn-ghost btn-sm" type="button">Abrir préstamos ↗</button>`;
-      row.querySelector("button").addEventListener("click", () => {
-        sessionStorage.setItem("loan_tenant", JSON.stringify(m));
-        window.location.href = "/loans/";
-      });
-      list.append(row);
-    });
-  }
-
   async function enterWorkspace() {
-    const memberships = getRows(await api("/auth/me/tenants/"));
-    state.memberships = memberships;
-    const shops = memberships.filter((m) => m.tenant_business_type === "barberia");
-    if (!shops.length) {
-      $("auth-screen").hidden = false;
-      $("workspace").hidden = true;
-      $("login-form").hidden = true;
-      $("register-form").hidden = true;
-      const onboarding = $("onboarding-no-shop");
-      if (onboarding) {
-        onboarding.hidden = false;
-        $("onboarding-username").textContent = state.username || "Usuario";
-        renderOnboardingBusinesses(memberships);
-      }
+    const allMemberships = getRows(await api("/auth/me/tenants/"));
+    state.memberships = allMemberships;
+    const barberShops = allMemberships.filter((m) => {
+      const tools = m.enabled_tools || [];
+      return tools.includes("barbershop") || m.tenant_business_type === "barberia";
+    });
+
+    if (!barberShops.length) {
+      logout();
+      showError("auth-error", "Módulo no habilitado: Tu cuenta no tiene acceso a una Barbería activa. Contacta al administrador de TuNegocio Digital para que habilite este módulo en tu perfil.");
       return;
     }
-    const onboarding = $("onboarding-no-shop");
-    if (onboarding) onboarding.hidden = true;
+
     const savedTenantId = sessionStorage.getItem("barber_tenant");
-    const active = shops.find((s) => s.tenant_id === savedTenantId) || shops[0];
+    const active = barberShops.find((s) => s.tenant_id === savedTenantId) || barberShops[0];
     state.tenant = active;
     state.role = active.role;
     sessionStorage.setItem("barber_tenant", active.tenant_id);
     $("shop-name").textContent = state.tenant.tenant_name;
     $("user-name").textContent = state.username;
     document.querySelectorAll(".owner-only").forEach((el) => { el.hidden = !isManager(); });
+
+    const adminLink = $("topbar-admin-link");
+    if (adminLink) {
+      const isAdmin = sessionStorage.getItem("is_staff") === "true" || sessionStorage.getItem("is_superuser") === "true";
+      adminLink.style.display = isAdmin ? "inline-flex" : "none";
+    }
+
     $("agenda-date").value = localDateValue();
     $("caja-date").value = localDateValue();
     setScreen("workspace");
@@ -673,6 +656,8 @@
       }, false);
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(errorMessage(data, "Usuario o contraseña incorrectos."));
+      if (data.is_staff) sessionStorage.setItem("is_staff", "true");
+      if (data.is_superuser) sessionStorage.setItem("is_superuser", "true");
       saveSession(data);
       event.currentTarget.reset();
       await enterWorkspace();
@@ -728,105 +713,6 @@
   document.querySelectorAll(".nav-btn").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
   $("logout-button").addEventListener("click", logout);
 
-
-  // ---------------------------------------------------------------- Negocios / Switcher
-  const switchDialog = $("switch-dialog");
-  async function openSwitchDialog() {
-    if (!switchDialog) return;
-    try {
-      const memberships = getRows(await api("/auth/me/tenants/"));
-      state.memberships = memberships;
-      const list = $("switch-business-list");
-      list.replaceChildren();
-      memberships.forEach((m) => {
-        const item = document.createElement("div");
-        item.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:var(--bg-soft);border-radius:8px;";
-        const isCurrent = state.tenant && m.tenant_id === state.tenant.tenant_id;
-        const isBarber = m.tenant_business_type === "barberia";
-        const badge = isBarber ? "💈 Barbería" : "💰 Préstamos";
-        item.innerHTML =
-          `<div><strong>${escapeHtml(m.tenant_name)}</strong><br><small style="color:var(--accent);font-weight:600;">${escapeHtml(badge)}</small> · ${escapeHtml(m.role)}</div>` +
-          (isCurrent
-            ? `<span class="pill" style="align-self:center;">Actual</span>`
-            : `<button class="btn btn-ghost btn-sm" type="button">${isBarber ? "Cambiar" : "Abrir ↗"}</button>`);
-        if (!isCurrent) {
-          item.querySelector("button").addEventListener("click", () => {
-            switchDialog.close();
-            if (isBarber) {
-              sessionStorage.setItem("barber_tenant", m.tenant_id);
-              enterWorkspace();
-            } else {
-              sessionStorage.setItem("loan_tenant", JSON.stringify(m));
-              window.location.href = "/loans/";
-            }
-          });
-        }
-        list.append(item);
-      });
-      switchDialog.showModal();
-    } catch (e) {
-      toast(e.message);
-    }
-  }
-
-  const btnSwitchBusiness = $("btn-switch-business");
-  if (btnSwitchBusiness) btnSwitchBusiness.addEventListener("click", openSwitchDialog);
-
-  const switchCreateForm = $("switch-create-form");
-  if (switchCreateForm) {
-    switchCreateForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const form = event.currentTarget;
-      const name = form.elements.name.value.trim();
-      const bType = form.elements.business_type.value;
-      const button = form.querySelector("button[type=submit]");
-      busy(button, true, "Creando…");
-      try {
-        const res = await post("/tenants/", { name, business_type: bType });
-        switchDialog.close();
-        toast("Negocio creado exitosamente.");
-        if (bType === "barberia") {
-          sessionStorage.setItem("barber_tenant", res.tenant ? res.tenant.id : "");
-          await enterWorkspace();
-        } else {
-          sessionStorage.setItem("loan_tenant", JSON.stringify({
-            tenant_id: res.tenant.id,
-            tenant_name: res.tenant.name,
-            role: "owner",
-            tenant_currency: res.tenant.currency || "COP",
-            tenant_business_type: "prestamista",
-          }));
-          window.location.href = "/loans/";
-        }
-      } catch (e) {
-        toast(e.message);
-      } finally {
-        busy(button, false);
-      }
-    });
-  }
-
-  const onboardingCreateForm = $("onboarding-create-form");
-  if (onboardingCreateForm) {
-    onboardingCreateForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const form = event.currentTarget;
-      const name = form.elements.name.value.trim();
-      const button = form.querySelector("button[type=submit]");
-      busy(button, true, "Creando barbería…");
-      try {
-        const res = await post("/tenants/", { name, business_type: "barberia" });
-        sessionStorage.setItem("barber_tenant", res.tenant ? res.tenant.id : "");
-        $("onboarding-no-shop").hidden = true;
-        toast("¡Barbería creada!");
-        await enterWorkspace();
-      } catch (e) {
-        showError("auth-error", e.message);
-      } finally {
-        busy(button, false);
-      }
-    });
-  }
 
   (async function init() {
     if (!state.access) return setScreen("auth");

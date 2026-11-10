@@ -8,7 +8,16 @@ class AdminRLSMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        if not request.path.startswith("/admin/") or not request.user.is_superuser:
+        is_admin_path = (
+            request.path.startswith("/admin/")
+            or request.path.startswith("/panel/")
+            or request.path.startswith("/api/v1/admin/")
+            or request.path.startswith("/api/v1/admin-panel/")
+        )
+        is_admin_user = getattr(request.user, "is_superuser", False) or getattr(
+            request.user, "is_staff", False
+        )
+        if not is_admin_path or not is_admin_user:
             return self.get_response(request)
 
         clear_tenant()
