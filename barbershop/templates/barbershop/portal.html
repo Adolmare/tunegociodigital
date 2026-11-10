@@ -1,0 +1,254 @@
+{% load static %}<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#15171c">
+  <title>Barbería | TuNegocio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Manrope:wght@700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{% static 'barbershop/portal.css' %}?v=20261110-1">
+  <script src="{% static 'barbershop/portal.js' %}?v=20261110-1" defer></script>
+</head>
+<body>
+  <main id="app" data-api-base="/api/v1">
+
+    <!-- ACCESO -->
+    <section class="auth-screen" id="auth-screen">
+      <div class="auth-card">
+        <div class="brand"><span class="brand-mark">✂</span><span>TuNegocio · Barbería</span></div>
+        <h1 id="auth-title">Tu barbería,<br>bajo control.</h1>
+        <p class="muted" id="auth-subtitle">Agenda citas, cobra en caja y calcula la comisión de cada barbero.</p>
+
+        <div class="tabs" role="tablist">
+          <button class="tab is-active" id="tab-login" type="button" role="tab">Iniciar sesión</button>
+          <button class="tab" id="tab-register" type="button" role="tab">Crear mi barbería</button>
+        </div>
+
+        <div class="notice notice-error" id="auth-error" role="alert" hidden></div>
+
+        <form id="login-form" class="stack" autocomplete="on">
+          <label class="field"><span>Usuario o correo</span>
+            <input name="username" autocomplete="username" required></label>
+          <label class="field"><span>Contraseña</span>
+            <input name="password" type="password" autocomplete="current-password" required></label>
+          <button class="btn btn-primary btn-wide" type="submit">Entrar</button>
+        </form>
+
+        <form id="register-form" class="stack" autocomplete="on" hidden>
+          <label class="field"><span>Nombre de la barbería</span>
+            <input name="business_name" maxlength="150" required></label>
+          <label class="field"><span>Tu nombre completo</span>
+            <input name="full_name" autocomplete="name" required></label>
+          <div class="grid-2">
+            <label class="field"><span>Usuario</span>
+              <input name="username" autocomplete="username" required></label>
+            <label class="field"><span>Correo</span>
+              <input name="email" type="email" autocomplete="email" required></label>
+          </div>
+          <div class="grid-2">
+            <label class="field"><span>Contraseña</span>
+              <input name="password" type="password" minlength="8" autocomplete="new-password" required></label>
+            <label class="field"><span>Repite la contraseña</span>
+              <input name="password_confirm" type="password" minlength="8" autocomplete="new-password" required></label>
+          </div>
+          <p class="hint">Mínimo 8 caracteres, con letras y números.</p>
+          <button class="btn btn-primary btn-wide" type="submit">Crear cuenta y barbería</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ESPACIO DE TRABAJO -->
+    <section class="workspace" id="workspace" hidden>
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark">✂</span><div><strong id="shop-name">Barbería</strong><small id="user-name"></small></div></div>
+        <button class="btn btn-ghost btn-sm" id="logout-button" type="button">Salir</button>
+      </header>
+
+      <nav class="main-nav" aria-label="Secciones">
+        <button class="nav-btn is-active" data-view="agenda" type="button"><span>📅</span>Agenda</button>
+        <button class="nav-btn" data-view="caja" type="button"><span>💵</span>Caja</button>
+        <button class="nav-btn" data-view="clientes" type="button"><span>👤</span>Clientes</button>
+        <button class="nav-btn" data-view="servicios" type="button"><span>✂</span>Servicios</button>
+        <button class="nav-btn" data-view="barberos" type="button"><span>💈</span>Barberos</button>
+      </nav>
+
+      <div class="content">
+        <div class="notice notice-error" id="error" role="alert" hidden></div>
+
+        <!-- AGENDA -->
+        <section class="view" id="view-agenda">
+          <div class="toolbar">
+            <div class="date-nav">
+              <button class="btn btn-ghost btn-sm" id="day-prev" type="button" aria-label="Día anterior">‹</button>
+              <input id="agenda-date" type="date" aria-label="Fecha de la agenda">
+              <button class="btn btn-ghost btn-sm" id="day-next" type="button" aria-label="Día siguiente">›</button>
+              <button class="btn btn-quiet btn-sm" id="day-today" type="button">Hoy</button>
+            </div>
+            <select id="agenda-barber" aria-label="Filtrar por barbero"><option value="">Todos los barberos</option></select>
+            <button class="btn btn-primary" id="new-appointment" type="button">＋ Nueva cita</button>
+          </div>
+          <div class="stats">
+            <div class="stat"><span>Pendientes</span><strong id="stat-pending">0</strong></div>
+            <div class="stat"><span>Atendidos</span><strong id="stat-done">0</strong></div>
+            <div class="stat stat-accent"><span>Cobrado</span><strong id="stat-total">$0</strong></div>
+          </div>
+          <div class="list" id="agenda-list"></div>
+          <div class="empty" id="agenda-empty" hidden>
+            <strong>No hay citas para este día</strong>
+            <p>Pulsa «Nueva cita» para agendar o registrar un cliente que llegó sin cita.</p>
+          </div>
+        </section>
+
+        <!-- CAJA -->
+        <section class="view" id="view-caja" hidden>
+          <form class="toolbar" id="caja-filters">
+            <select id="caja-period" aria-label="Período">
+              <option value="day">Diario</option>
+              <option value="week">Semanal</option>
+              <option value="month">Mensual</option>
+            </select>
+            <input id="caja-date" type="date" required aria-label="Fecha de corte">
+            <button class="btn btn-primary" type="submit">Consultar</button>
+            <span class="pill" id="caja-range"></span>
+          </form>
+          <div class="kpis" id="caja-kpis"></div>
+          <div class="card">
+            <h2>Por barbero</h2>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Barbero</th><th>Servicios</th><th>Vendido</th><th>Comisión</th><th>Propinas</th><th>Le toca</th><th>Neto negocio</th></tr></thead>
+                <tbody id="caja-rows"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <h2>Por método de pago</h2>
+            <div id="caja-methods" class="chips"></div>
+          </div>
+        </section>
+
+        <!-- CLIENTES -->
+        <section class="view" id="view-clientes" hidden>
+          <div class="toolbar">
+            <input id="customer-search" type="search" placeholder="Buscar por nombre o teléfono…" aria-label="Buscar cliente">
+          </div>
+          <div class="list" id="customer-list"></div>
+          <div class="empty" id="customer-empty" hidden>
+            <strong>Aún no hay clientes</strong>
+            <p>Se crean solos cuando agendas la primera cita.</p>
+          </div>
+        </section>
+
+        <!-- SERVICIOS -->
+        <section class="view" id="view-servicios" hidden>
+          <div class="toolbar">
+            <h2>Servicios</h2>
+            <button class="btn btn-primary owner-only" id="new-service" type="button">＋ Nuevo servicio</button>
+          </div>
+          <div class="list" id="service-list"></div>
+          <div class="empty" id="service-empty" hidden>
+            <strong>Crea tus servicios</strong>
+            <p>Corte, barba, cejas… con su precio y duración para que la agenda calcule el tiempo.</p>
+          </div>
+        </section>
+
+        <!-- BARBEROS -->
+        <section class="view" id="view-barberos" hidden>
+          <div class="toolbar">
+            <h2>Barberos</h2>
+            <button class="btn btn-primary owner-only" id="new-barber" type="button">＋ Nuevo barbero</button>
+          </div>
+          <div class="list" id="barber-list"></div>
+          <div class="empty" id="barber-empty" hidden>
+            <strong>Agrega a tus barberos</strong>
+            <p>Define el porcentaje de comisión de cada uno para calcular sus pagos en caja.</p>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- DIÁLOGO: NUEVA CITA -->
+    <dialog id="appointment-dialog">
+      <form id="appointment-form" class="dialog-form">
+        <div class="dialog-head"><h2>Nueva cita</h2><button class="btn btn-ghost btn-sm" type="button" data-close>✕</button></div>
+        <div class="notice notice-error" id="appointment-error" role="alert" hidden></div>
+        <label class="field"><span>Cliente</span>
+          <input id="appointment-customer" name="customer_name" list="customer-options" placeholder="Busca o escribe un nombre nuevo" autocomplete="off" required>
+          <datalist id="customer-options"></datalist></label>
+        <label class="field"><span>Teléfono (opcional)</span>
+          <input id="appointment-phone" name="customer_phone" inputmode="tel" maxlength="40"></label>
+        <div class="grid-2">
+          <label class="field"><span>Barbero</span>
+            <select id="appointment-barber" name="barber" required></select></label>
+          <label class="field"><span>Fecha y hora</span>
+            <input id="appointment-start" name="starts_at" type="datetime-local" required></label>
+        </div>
+        <button class="btn btn-quiet btn-sm" id="appointment-now" type="button">Llegó ahora (sin cita)</button>
+        <fieldset class="field"><legend>Servicios</legend>
+          <div id="appointment-services" class="checks"></div></fieldset>
+        <label class="field"><span>Notas (opcional)</span>
+          <textarea name="notes" rows="2" maxlength="500"></textarea></label>
+        <div class="summary-line"><span id="appointment-duration">0 min</span><strong id="appointment-total">$0</strong></div>
+        <button class="btn btn-primary btn-wide" type="submit" id="appointment-submit">Guardar cita</button>
+      </form>
+    </dialog>
+
+    <!-- DIÁLOGO: COBRAR -->
+    <dialog id="charge-dialog">
+      <form id="charge-form" class="dialog-form">
+        <div class="dialog-head"><h2>Cobrar servicio</h2><button class="btn btn-ghost btn-sm" type="button" data-close>✕</button></div>
+        <div class="notice notice-error" id="charge-error" role="alert" hidden></div>
+        <div class="card flat" id="charge-summary"></div>
+        <label class="field"><span>Método de pago</span>
+          <select id="charge-method" name="payment_method">
+            <option value="cash">Efectivo</option>
+            <option value="transfer">Transferencia</option>
+            <option value="card">Tarjeta</option>
+            <option value="other">Otro</option>
+          </select></label>
+        <label class="field"><span>Propina (opcional)</span>
+          <input id="charge-tip" name="tip" type="number" min="0" step="100" inputmode="numeric" placeholder="0"></label>
+        <div class="summary-line"><span>Total a recibir</span><strong id="charge-total">$0</strong></div>
+        <small class="hint" id="charge-split"></small>
+        <button class="btn btn-primary btn-wide" type="submit" id="charge-submit">Confirmar cobro</button>
+      </form>
+    </dialog>
+
+    <!-- DIÁLOGO: SERVICIO -->
+    <dialog id="service-dialog">
+      <form id="service-form" class="dialog-form">
+        <div class="dialog-head"><h2 id="service-title">Servicio</h2><button class="btn btn-ghost btn-sm" type="button" data-close>✕</button></div>
+        <div class="notice notice-error" id="service-error" role="alert" hidden></div>
+        <input type="hidden" name="id">
+        <label class="field"><span>Nombre</span><input name="name" maxlength="160" placeholder="Corte clásico" required></label>
+        <div class="grid-2">
+          <label class="field"><span>Precio</span><input name="price" type="number" min="0" step="100" inputmode="numeric" required></label>
+          <label class="field"><span>Duración (min)</span><input name="duration_minutes" type="number" min="5" max="480" step="5" value="30" required></label>
+        </div>
+        <label class="check"><input type="checkbox" name="is_active" checked> Disponible para agendar</label>
+        <button class="btn btn-primary btn-wide" type="submit">Guardar servicio</button>
+      </form>
+    </dialog>
+
+    <!-- DIÁLOGO: BARBERO -->
+    <dialog id="barber-dialog">
+      <form id="barber-form" class="dialog-form">
+        <div class="dialog-head"><h2 id="barber-title">Barbero</h2><button class="btn btn-ghost btn-sm" type="button" data-close>✕</button></div>
+        <div class="notice notice-error" id="barber-error" role="alert" hidden></div>
+        <input type="hidden" name="id">
+        <label class="field"><span>Nombre completo</span><input name="full_name" maxlength="160" required></label>
+        <div class="grid-2">
+          <label class="field"><span>Teléfono (opcional)</span><input name="phone" inputmode="tel" maxlength="40"></label>
+          <label class="field"><span>Comisión (%)</span><input name="commission_percent" type="number" min="0" max="100" step="1" value="50" required></label>
+        </div>
+        <label class="check"><input type="checkbox" name="is_active" checked> Activo (aparece en la agenda)</label>
+        <button class="btn btn-primary btn-wide" type="submit">Guardar barbero</button>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  </main>
+</body>
+</html>

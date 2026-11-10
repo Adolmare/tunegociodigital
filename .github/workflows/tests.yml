@@ -31,7 +31,9 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
       - name: Check portal JavaScript syntax
-        run: node --check loans/static/loans/portal.js
+        run: |
+          node --check loans/static/loans/portal.js
+          node --check barbershop/static/barbershop/portal.js
       - name: Install GeoDjango system libraries
         run: |
           sudo apt-get update

@@ -11,7 +11,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from tenants.api import set_database_context
 from tenants.models import BusinessType, Membership, Tenant, TenantJoinRequest, Tool
-from tenants.services import create_tenant
+from tenants.services import create_tenant, ensure_business_type
 
 from .models import User
 
@@ -77,6 +77,11 @@ class RegisterSerializer(serializers.ModelSerializer):
         allow_blank=True,
         write_only=True,
     )
+    business_type = serializers.ChoiceField(
+        choices=[("prestamista", "Préstamos"), ("barberia", "Barbería")],
+        required=False,
+        write_only=True,
+    )
 
     class Meta:
         model = User
@@ -90,6 +95,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             "register_role",
             "join_code",
             "business_name",
+            "business_type",
         )
         read_only_fields = ("id",)
         extra_kwargs = {
@@ -158,7 +164,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             biz_name = str(attrs.get("business_name") or "").strip()
             if not biz_name:
                 raise serializers.ValidationError(
-                    {"business_name": "Ingresa el nombre de tu negocio de préstamos."}
+                    {"business_name": "Ingresa el nombre de tu negocio."}
                 )
             attrs["business_name"] = biz_name
 
@@ -170,25 +176,29 @@ class RegisterSerializer(serializers.ModelSerializer):
         role = validated_data.pop("register_role", None)
         validated_data.pop("join_code", None)
         business_name = validated_data.pop("business_name", None)
+        business_type_code = validated_data.pop("business_type", None) or "prestamista"
         target_tenant = validated_data.pop("_target_tenant", None)
 
         user = User.objects.create_user(**validated_data)
 
         if role == "owner" and business_name:
             set_database_context(user.pk)
-            loans_tool, _ = Tool.objects.get_or_create(
-                code="loans",
-                defaults={"name": "Préstamos", "is_core": False},
-            )
-            accounting_tool, _ = Tool.objects.get_or_create(
-                code="accounting",
-                defaults={"name": "Contabilidad", "is_core": True},
-            )
-            bt, _ = BusinessType.objects.get_or_create(
-                code="prestamista",
-                defaults={"name": "Prestamista"},
-            )
-            bt.tools.add(loans_tool, accounting_tool)
+            if business_type_code == "barberia":
+                bt = ensure_business_type("barberia")
+            else:
+                loans_tool, _ = Tool.objects.get_or_create(
+                    code="loans",
+                    defaults={"name": "Préstamos", "is_core": False},
+                )
+                accounting_tool, _ = Tool.objects.get_or_create(
+                    code="accounting",
+                    defaults={"name": "Contabilidad", "is_core": True},
+                )
+                bt, _ = BusinessType.objects.get_or_create(
+                    code="prestamista",
+                    defaults={"name": "Prestamista"},
+                )
+                bt.tools.add(loans_tool, accounting_tool)
             slug = _build_unique_tenant_slug(business_name)
             tenant = create_tenant(
                 user=user,
@@ -226,6 +236,9 @@ class RegisterSerializer(serializers.ModelSerializer):
                 "tenant_slug": created_tenant.slug,
                 "tenant_join_code": created_tenant.join_code,
                 "tenant_currency": created_tenant.currency,
+                "tenant_business_type": (
+                    created_tenant.business_type.code if created_tenant.business_type else ""
+                ),
                 "role": Membership.Role.OWNER,
             }
         created_join_request = getattr(instance, "_created_join_request", None)
@@ -252,6 +265,9 @@ class MyMembershipSerializer(serializers.ModelSerializer):
     tenant_slug = serializers.CharField(source="tenant.slug", read_only=True)
     tenant_join_code = serializers.SerializerMethodField()
     tenant_currency = serializers.CharField(source="tenant.currency", read_only=True)
+    tenant_business_type = serializers.CharField(
+        source="tenant.business_type.code", read_only=True, default=""
+    )
 
     def get_tenant_join_code(self, obj):
         if obj.role in {Membership.Role.OWNER, Membership.Role.ADMIN}:
@@ -266,5 +282,6 @@ class MyMembershipSerializer(serializers.ModelSerializer):
             "tenant_slug",
             "tenant_join_code",
             "tenant_currency",
+            "tenant_business_type",
             "role",
         )

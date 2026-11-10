@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "reservations",
     "deliveries",
     "loans",
+    "barbershop",
     "accounting",
 ]
 

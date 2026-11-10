@@ -51,7 +51,7 @@ class MyTenantsAPIView(generics.GenericAPIView):
             )
             cursor.execute("SELECT set_config('app.tenant_id', '', true)")
         memberships = (
-            Membership.objects.select_related("tenant")
+            Membership.objects.select_related("tenant", "tenant__business_type")
             .filter(user=request.user, is_active=True)
             .order_by("created_at")
         )
