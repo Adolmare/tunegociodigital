@@ -31,20 +31,6 @@ class TenantListCreateAPIView(generics.GenericAPIView):
 
     def post(self, request, *args, **kwargs):
         set_database_context(request.user.pk)
-        if request.data.get("business_type") == "prestamista":
-            loans_tool, _ = Tool.objects.get_or_create(
-                code="loans",
-                defaults={"name": "Préstamos", "is_core": False},
-            )
-            accounting_tool, _ = Tool.objects.get_or_create(
-                code="accounting",
-                defaults={"name": "Contabilidad", "is_core": True},
-            )
-            bt, _ = BusinessType.objects.get_or_create(
-                code="prestamista",
-                defaults={"name": "Prestamista"},
-            )
-            bt.tools.add(loans_tool, accounting_tool)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         tenant = create_tenant(

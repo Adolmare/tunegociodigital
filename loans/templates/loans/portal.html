@@ -149,10 +149,16 @@
           <div class="form-divider"></div>
           <form id="tenant-create-form" class="stack">
             <div class="field">
-              <label for="tenant-create-name">¿Eres dueño? Crea un nuevo negocio de préstamos</label>
-              <input id="tenant-create-name" name="name" type="text" maxlength="150" placeholder="Nombre del negocio (ej. Inversiones del Norte)" required>
+              <label for="tenant-create-name">¿Eres dueño? Crea un nuevo negocio</label>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+                <select id="tenant-create-type" name="business_type" class="field-select" style="padding: 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text);">
+                  <option value="prestamista">💰 Préstamos y Cobranza</option>
+                  <option value="barberia">💈 Barbería y Peluquería</option>
+                </select>
+                <input id="tenant-create-name" name="name" type="text" maxlength="150" placeholder="Nombre comercial" required>
+              </div>
             </div>
-            <button class="button button-primary button-wide" type="submit">Crear mi negocio y entrar</button>
+            <button class="button button-primary button-wide" type="submit">Crear y acceder</button>
           </form>
           <div class="form-divider"></div>
           <form id="tenant-join-form" class="stack">
@@ -233,6 +239,7 @@
             <span class="online-dot" aria-hidden="true"></span>
             <span id="topbar-tenant-name">Tu negocio</span>
           </div>
+          <a href="/barberia/" class="button button-quiet button-xs" id="topbar-barber-link" title="Ir al módulo de Barbería" style="display:inline-flex;align-items:center;gap:4px;text-decoration:none;font-weight:600;">💈 Barbería</a>
           <button class="avatar avatar-small" id="topbar-avatar" type="button" aria-label="Cambiar de negocio" title="Cambiar de negocio">T</button>
           <button class="button button-quiet button-xs topbar-logout-btn" id="topbar-logout-button" type="button" aria-label="Cerrar sesión" title="Cerrar sesión">
             <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>

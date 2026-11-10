@@ -2,9 +2,9 @@
   const app = document.getElementById("loan-app");
   const apiBase = app.dataset.apiBase.replace(/\/$/, "");
   const state = {
-    access: sessionStorage.getItem("loan_access"),
-    refresh: sessionStorage.getItem("loan_refresh"),
-    username: sessionStorage.getItem("loan_username") || "",
+    access: sessionStorage.getItem("loan_access") || sessionStorage.getItem("tn_access") || sessionStorage.getItem("barber_access"),
+    refresh: sessionStorage.getItem("loan_refresh") || sessionStorage.getItem("tn_refresh") || sessionStorage.getItem("barber_refresh"),
+    username: sessionStorage.getItem("loan_username") || sessionStorage.getItem("tn_username") || sessionStorage.getItem("barber_username") || "",
     tenant: null,
     currency: "COP",
     role: "",
@@ -110,9 +110,11 @@
     const data = await response.json();
     state.access = data.access;
     sessionStorage.setItem("loan_access", data.access);
+    sessionStorage.setItem("tn_access", data.access);
     if (data.refresh) {
       state.refresh = data.refresh;
       sessionStorage.setItem("loan_refresh", data.refresh);
+      sessionStorage.setItem("tn_refresh", data.refresh);
     }
     return true;
   }
@@ -325,13 +327,23 @@
       const options = document.getElementById("tenant-options");
       options.replaceChildren();
       memberships.forEach((membership) => {
+        const typeCode = membership.tenant_business_type || "prestamista";
+        const isBarber = typeCode === "barberia";
+        const typeBadge = isBarber ? "💈 Barbería" : "💰 Préstamos";
         const button = document.createElement("button");
         button.type = "button";
         button.className = "tenant-choice";
         button.innerHTML =
           `<div><strong>${escapeHtml(membership.tenant_name)}</strong>` +
-          `<span>${escapeHtml(membership.role)}</span></div><span aria-hidden="true">→</span>`;
-        button.addEventListener("click", () => openWorkspace(membership));
+          `<span><small style="color:var(--accent);font-weight:600;">${escapeHtml(typeBadge)}</small> · ${escapeHtml(membership.role)}</span></div><span aria-hidden="true">→</span>`;
+        button.addEventListener("click", () => {
+          if (isBarber) {
+            sessionStorage.setItem("barber_tenant", membership.tenant_id);
+            window.location.href = "/barberia/";
+          } else {
+            openWorkspace(membership);
+          }
+        });
         options.append(button);
       });
       setScreen("tenants");
@@ -1402,19 +1414,20 @@
     return `${base}-${suffix}`;
   }
 
-  async function createLendingBusiness(businessName) {
+  async function createBusiness(businessName, businessType = "prestamista") {
     const response = await rawRequest("/tenants/", {
       method: "POST",
       body: JSON.stringify({
         name: businessName,
         slug: buildBusinessSlug(businessName),
-        business_type: "prestamista",
+        business_type: businessType,
       }),
     });
     const data = await response.json().catch(() => null);
     if (!response.ok) throw new Error(errorMessage(data, "No se pudo crear el negocio."));
     return data;
   }
+  const createLendingBusiness = createBusiness;
 
   registerForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1539,11 +1552,18 @@
       clearMessages();
       const form = new FormData(tenantCreateForm);
       const businessName = String(form.get("name") || "").trim();
+      const businessType = String(form.get("business_type") || "prestamista");
       const button = tenantCreateForm.querySelector('button[type="submit"]');
       setBusy(button, true, "Creando negocio…");
       try {
-        await createLendingBusiness(businessName);
+        const res = await createBusiness(businessName, businessType);
         tenantCreateForm.reset();
+        if (businessType === "barberia") {
+          sessionStorage.setItem("barber_tenant", res.tenant ? res.tenant.id : "");
+          showToast("Barbería creada. Abriendo módulo de Barbería…");
+          setTimeout(() => { window.location.href = "/barberia/"; }, 400);
+          return;
+        }
         const memberships = getRows(await api("/auth/me/tenants/"));
         if (memberships.length) {
           await openWorkspace(memberships[memberships.length - 1]);

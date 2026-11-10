@@ -5,6 +5,7 @@ from .models import BusinessType, EmployeeJoinRequest, Membership, Tenant, Tenan
 
 class TenantSerializer(serializers.ModelSerializer):
     join_code = serializers.SerializerMethodField()
+    business_type = serializers.CharField(source="business_type.code", read_only=True, default="")
 
     def get_join_code(self, obj):
         request = self.context.get("request")
@@ -35,7 +36,7 @@ class TenantSerializer(serializers.ModelSerializer):
 
 class TenantCreateSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=150)
-    slug = serializers.SlugField(max_length=50)
+    slug = serializers.SlugField(max_length=50, required=False)
     business_type = serializers.SlugRelatedField(
         slug_field="code",
         queryset=BusinessType.objects.all(),
@@ -43,13 +44,24 @@ class TenantCreateSerializer(serializers.Serializer):
         allow_null=True,
     )
 
+    def to_internal_value(self, data):
+        bt_code = data.get("business_type") if isinstance(data, dict) else None
+        if bt_code:
+            from .services import ensure_business_type
+            ensure_business_type(bt_code)
+        return super().to_internal_value(data)
+
     def validate(self, attrs):
         unexpected_tenant_fields = {"tenant", "tenant_id"}.intersection(self.initial_data)
         if unexpected_tenant_fields:
             raise serializers.ValidationError(
                 "El tenant se determina al crear la empresa y no se acepta en la solicitud."
             )
-        if Tenant.objects.filter(slug=attrs["slug"]).exists():
+        slug = attrs.get("slug")
+        if not slug:
+            from accounts.serializers import _build_unique_tenant_slug
+            attrs["slug"] = _build_unique_tenant_slug(attrs["name"])
+        elif Tenant.objects.filter(slug=slug).exists():
             raise serializers.ValidationError({"slug": "Este slug ya está en uso."})
         return attrs
 
