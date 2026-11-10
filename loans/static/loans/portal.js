@@ -699,6 +699,7 @@
         .some((field) => String(field || "").toLowerCase().includes(query));
     });
     document.getElementById("loans-empty").hidden = filteredLoans.length > 0;
+    const isOwner = state.role === "owner";
     const isManager = (rank[state.role] || 0) >= rank.manager;
     filteredLoans.forEach((loan) => {
       const row = document.createElement("article");
@@ -726,6 +727,10 @@
         ? ` · Cobrador: ${escapeHtml(loan.collector_name)}`
         : " · Sin cobrador";
       const paymentsCount = Array.isArray(loan.payment_history) ? loan.payment_history.length : 0;
+      const editBtnHtml = isManager
+        ? `<button class="loan-action-secondary" type="button" data-edit-loan="${escapeHtml(loan.id)}" style="color:var(--green);font-weight:700;">` +
+          `✏️ Editar</button>`
+        : "";
       const amortBtnHtml =
         `<button class="loan-action-secondary" type="button" data-open-amortization="${escapeHtml(loan.id)}">` +
         `📊 Amortización</button>`;
@@ -739,6 +744,10 @@
           `data-phone="${escapeHtml(phone)}" ` +
           `data-neighborhood="${escapeHtml(loan.neighborhood || "")}">＋ Renovar</button>`
         : "";
+      const deleteBtnHtml = isOwner
+        ? `<button class="loan-action-secondary" type="button" data-delete-loan="${escapeHtml(loan.id)}" title="Mover a papelera" style="color:var(--red);">` +
+          `🗑️ Borrar</button>`
+        : "";
       row.innerHTML =
         `<div class="loan-person"><span class="customer-avatar">${escapeHtml(initials(name))}</span>` +
         `<div><strong>${escapeHtml(name)}</strong><span>${escapeHtml(loan.neighborhood || "Sin barrio")}${collectorMeta}</span>` +
@@ -750,7 +759,7 @@
         `<button class="loan-action" type="button" data-payment-loan="${escapeHtml(loan.id)}" ` +
         `data-payment-name="${escapeHtml(name)}" data-payment-phone="${escapeHtml(phone)}" data-payment-suggested="${escapeHtml(suggested)}">Registrar pago</button>` +
         `<span class="status-pill ${statusClass(loan.status)}">${escapeHtml(labels[loan.status] || loan.status)}</span>` +
-        `<div class="loan-row-actions">${amortBtnHtml}${manageBtnHtml}${renewBtnHtml}</div>`;
+        `<div class="loan-row-actions">${editBtnHtml}${amortBtnHtml}${manageBtnHtml}${renewBtnHtml}${deleteBtnHtml}</div>`;
       elements.loans.append(row);
     });
   }
@@ -1030,11 +1039,17 @@
       `<button class="button button-primary button-sm" type="button" data-payment-loan="${escapeHtml(loan.id)}" ` +
         `data-payment-name="${escapeHtml(name)}" data-payment-phone="${escapeHtml(phone)}" ` +
         `data-payment-suggested="${escapeHtml(suggested)}">＋ Registrar abono</button>`,
+      isManager
+        ? `<button class="button button-outline button-sm" type="button" data-edit-loan="${escapeHtml(loan.id)}" style="color:var(--green);font-weight:700;">✏️ Editar préstamo</button>`
+        : "",
       `<button class="button button-outline button-sm" type="button" data-open-amortization="${escapeHtml(loan.id)}">📊 Ver amortización completa</button>`,
       isManager
         ? `<button class="button button-outline button-sm" type="button" data-renew-customer="1" ` +
           `data-full-name="${escapeHtml(name)}" data-document-id="${escapeHtml(loan.document_id || "")}" ` +
           `data-phone="${escapeHtml(phone)}" data-neighborhood="${escapeHtml(loan.neighborhood || "")}">🔄 Renovar crédito</button>`
+        : "",
+      isOwner
+        ? `<button class="button button-danger-outline button-sm" type="button" data-delete-loan="${escapeHtml(loan.id)}" style="color:var(--red);border-color:rgba(190,18,60,0.3);">🗑️ Mover a papelera</button>`
         : "",
       cleanPhoneForWhatsApp(phone)
         ? `<a class="button button-quiet button-sm" href="tel:${escapeHtml(phone)}">📞 Llamar</a>` +
@@ -1221,8 +1236,14 @@
           const collectorControl = isManager
             ? `<select class="collector-select-inline" data-assign-loan="${escapeHtml(loan.id)}" aria-label="Asignar cobrador">${collectorOptions}</select>`
             : (loan.collector_name ? `<span class="muted">Cobrador: ${escapeHtml(loan.collector_name)}</span>` : "");
+          const editLoanBtn = isManager
+            ? `<button class="button button-outline button-xs" type="button" data-edit-loan="${escapeHtml(loan.id)}" style="color:var(--green);font-weight:700;">✏️ Editar</button>`
+            : "";
+          const deleteLoanBtn = isOwner
+            ? `<button class="button button-danger-outline button-xs" type="button" data-delete-loan="${escapeHtml(loan.id)}" style="color:var(--red);border-color:rgba(190,18,60,0.3);">🗑️ Borrar</button>`
+            : "";
           return `<section class="amortization-loan"><div class="amortization-header"><h4>Préstamo ${escapeHtml(loan.date)} · ${escapeHtml(labels[loan.frequency] || loan.frequency)}</h4>` +
-            `<div class="business-code-actions">${collectorControl}<button class="button button-outline button-xs" type="button" data-manage-loan="${escapeHtml(loan.id)}">🧾 Gestionar préstamo</button></div></div>` +
+            `<div class="business-code-actions">${collectorControl}${editLoanBtn}<button class="button button-outline button-xs" type="button" data-manage-loan="${escapeHtml(loan.id)}">🧾 Gestionar</button>${deleteLoanBtn}</div></div>` +
             `<p>Capital ${money(loan.principal)} · Interés ${money(loan.interest)} · Papelería ${money(loan.paperwork)} · Saldo ${money(loan.balance)}</p>` +
             `<div class="ledger-table-wrap"><table class="ledger-table"><thead><tr><th>CUOTA</th><th>VENCIMIENTO</th><th>VALOR</th><th>PAGADO</th><th>PENDIENTE</th><th>ESTADO</th></tr></thead><tbody>${installments}</tbody></table></div>` +
             `<h5>Historial de pagos</h5><div class="ledger-table-wrap"><table class="ledger-table"><thead><tr><th>FECHA</th><th>VALOR NETO</th><th>MOVIMIENTO</th><th>COBRADOR</th><th>MÉTODO</th><th>ACCIÓN</th></tr></thead><tbody>${paymentHistory}</tbody></table></div></section>`;
@@ -1959,11 +1980,15 @@
     const reverseBtn = event.target.closest("[data-reverse-payment]");
     const renewBtn = event.target.closest("[data-renew-customer]");
     const manageBtn = event.target.closest("[data-manage-loan]");
+    const editLoanBtn = event.target.closest("[data-edit-loan]");
+    const deleteLoanBtn = event.target.closest("[data-delete-loan]");
     const editOpeningBtn = event.target.closest("[data-edit-opening-collector]");
     if (accept) decideEmployeeRequest(accept.dataset.requestAccept, "accept", accept);
     if (reject) decideEmployeeRequest(reject.dataset.requestReject, "reject", reject);
     if (reverseBtn) reversePayment(reverseBtn.dataset.reversePayment, reverseBtn);
     if (manageBtn) openLoanManageDialog(manageBtn.dataset.manageLoan);
+    if (editLoanBtn) openLoanEditDialog(editLoanBtn.dataset.editLoan);
+    if (deleteLoanBtn) confirmDeleteLoan(deleteLoanBtn.dataset.deleteLoan, deleteLoanBtn);
     if (editOpeningBtn) {
       const collectorSelect = document.getElementById("cash-opening-collector");
       const amountInput = document.getElementById("cash-opening-amount");
@@ -2338,10 +2363,22 @@
     });
   }
 
-  function openLoanEditDialog(loanId) {
-    const loan = findLoanById(loanId);
+  async function openLoanEditDialog(loanId) {
+    let loan = findLoanById(loanId);
+    if (!loan) {
+      try {
+        loan = await api(`/loans/${loanId}/`);
+      } catch (_) {}
+    }
     const dialog = document.getElementById("loan-edit-dialog");
     if (!loan || !dialog) return;
+
+    const manageDialog = document.getElementById("loan-manage-dialog");
+    if (manageDialog && manageDialog.open) {
+      manageDialog.close();
+    } else {
+      state.activeManagedLoanId = null;
+    }
 
     state.editingLoanId = String(loan.id);
 
@@ -2439,7 +2476,9 @@
       if (state.view === "customer-summary") {
         await loadCustomerSummary(state.customerSummaryPage || 1);
       }
-      openLoanManageDialog(state.editingLoanId);
+      if (state.activeManagedLoanId && String(state.activeManagedLoanId) === String(state.editingLoanId)) {
+        openLoanManageDialog(state.editingLoanId);
+      }
     } catch (err) {
       if (errorEl) {
         errorEl.textContent = err.message || "Error al actualizar préstamo.";
@@ -2452,8 +2491,13 @@
     }
   }
 
-  async function confirmDeleteLoan(loanId) {
-    const loan = findLoanById(loanId);
+  async function confirmDeleteLoan(loanId, deleteBtn) {
+    let loan = findLoanById(loanId);
+    if (!loan) {
+      try {
+        loan = await api(`/loans/${loanId}/`);
+      } catch (_) {}
+    }
     const clientName = loan ? loan.customer_name : "este cliente";
     const ok = window.confirm(
       `¿Deseas mover el préstamo de "${clientName}" a la papelera?\n\n` +
@@ -2461,8 +2505,8 @@
     );
     if (!ok) return;
 
-    const deleteBtn = document.getElementById("manage-delete-loan-btn");
-    setBusy(deleteBtn, true, "Moviendo…");
+    const btn = deleteBtn || document.getElementById("manage-delete-loan-btn");
+    if (btn) setBusy(btn, true, "Moviendo…");
     try {
       await api(`/loans/${loanId}/`, { method: "DELETE" });
       const manageDialog = document.getElementById("loan-manage-dialog");
@@ -2476,7 +2520,7 @@
     } catch (err) {
       showError(err.message || "No se pudo mover el préstamo a la papelera.");
     } finally {
-      setBusy(deleteBtn, false);
+      if (btn) setBusy(btn, false);
     }
   }
 
