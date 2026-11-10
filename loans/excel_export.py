@@ -194,6 +194,7 @@ def build_loans_excel_workbook(
             collector_id__in=emp_ids,
             created_at__date__range=(period_start, period_end),
             import_reference="",
+            deleted_at__isnull=True,
         ).values("collector_id").annotate(
             principal=Sum("principal"),
             paperwork=Sum("paperwork_fee"),

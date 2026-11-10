@@ -216,6 +216,7 @@ def overdue_installments(*, tenant, as_of=None, collector=None):
         due_date__lte=as_of,
         amount_paid__lt=F("amount_due"),
         loan__status__in=["active", "delinquent"],
+        loan__deleted_at__isnull=True,
     )
     if collector is not None:
         queryset = queryset.filter(loan__collector=collector)
@@ -380,3 +381,186 @@ def reverse_payment(*, payment, user):
         balance=str(loan.balance),
     )
     return reversal
+
+
+@transaction.atomic
+def update_loan(
+    *,
+    loan,
+    customer=None,
+    customer_details=None,
+    collector=None,
+    principal=None,
+    interest_rate=None,
+    installments=None,
+    frequency=None,
+    start_date=None,
+    paperwork_fee=None,
+    is_open_ended=None,
+):
+    loan = Loan.objects.select_for_update().get(pk=loan.pk)
+    tenant = loan.tenant
+
+    if customer_details is not None:
+        doc_id = (customer_details.get("document_id") or "").strip()
+        cust = loan.customer
+        if cust:
+            for field_name in ("full_name", "neighborhood", "phone"):
+                if customer_details.get(field_name):
+                    setattr(cust, field_name, customer_details[field_name])
+            if doc_id:
+                cust.document_id = doc_id
+            cust.save()
+    elif customer is not None:
+        if customer.tenant_id != tenant.pk:
+            raise ValidationError({"customer": "El cliente debe pertenecer a la empresa activa."})
+        loan.customer = customer
+
+    if collector is not None:
+        if collector.tenant_id != tenant.pk:
+            raise ValidationError({"collector": "El cobrador debe pertenecer a la empresa activa."})
+        loan.collector = collector
+
+    if paperwork_fee is not None:
+        loan.paperwork_fee = _money(paperwork_fee)
+
+    if is_open_ended is not None:
+        loan.is_open_ended = bool(is_open_ended)
+
+    financial_changed = any([
+        principal is not None and _money(principal) != loan.principal,
+        interest_rate is not None and Decimal(str(interest_rate)) != loan.interest_rate,
+        installments is not None and int(installments) != loan.installments,
+        frequency is not None and frequency != loan.frequency,
+        start_date is not None and str(start_date) != str(loan.start_date),
+    ])
+
+    if financial_changed:
+        new_principal = _money(principal) if principal is not None else loan.principal
+        new_rate = Decimal(str(interest_rate)) if interest_rate is not None else loan.interest_rate
+        new_installments = int(installments) if installments is not None else loan.installments
+        new_frequency = frequency if frequency is not None else loan.frequency
+        new_start_date = start_date if start_date is not None else loan.start_date
+
+        if new_principal <= 0:
+            raise ValidationError({"principal": "El capital debe ser mayor que cero."})
+        if new_rate < 0:
+            raise ValidationError({"interest_rate": "La tasa no puede ser negativa."})
+
+        interest = _money(new_principal * new_rate / Decimal("100"))
+        new_total_payable = _money(new_principal + interest)
+
+        payments_qs = list(
+            loan.payments.filter(direction="payment", reversals__isnull=True).order_by("created_at", "id")
+        )
+        total_paid_from_payments = sum((p.amount for p in payments_qs), Decimal("0.00"))
+        total_collected = _money(total_paid_from_payments + (loan.opening_paid or Decimal("0.00")))
+
+        if new_total_payable < total_collected:
+            raise ValidationError(
+                {"principal": f"El nuevo total a pagar ({new_total_payable}) no puede ser menor a lo ya cobrado ({total_collected})."}
+            )
+
+        if loan.is_open_ended:
+            collection_amount = _collection_amount(new_principal, new_frequency)
+            collection_cents = int(collection_amount * 100)
+            if collection_cents < 1:
+                raise ValidationError({"principal": "El capital es demasiado bajo para calcular una cuota."})
+            total_cents = int(new_total_payable * 100)
+            new_installments = (total_cents + collection_cents - 1) // collection_cents
+            loan.collection_amount = collection_amount
+        else:
+            if new_installments < 1:
+                raise ValidationError({"installments": "Debe existir al menos una cuota."})
+            total_cents = int(new_total_payable * 100)
+
+        loan.principal = new_principal
+        loan.interest_rate = new_rate
+        loan.installments = new_installments
+        loan.frequency = new_frequency
+        loan.start_date = new_start_date
+        loan.total_payable = new_total_payable
+        loan.save()
+
+        PaymentAllocation.objects.filter(payment__loan=loan).delete()
+        loan.schedule.all().delete()
+
+        new_schedule = []
+        if loan.is_open_ended:
+            for index in range(1, new_installments + 1):
+                amount_due = min(collection_amount, new_total_payable - collection_amount * (index - 1))
+                inst = LoanInstallment.objects.create(
+                    tenant=tenant,
+                    loan=loan,
+                    number=index,
+                    due_date=_due_date(new_start_date, new_frequency, index),
+                    amount_due=amount_due,
+                    amount_paid=Decimal("0.00"),
+                    status="pending",
+                )
+                new_schedule.append(inst)
+        else:
+            base_cents, remainder = divmod(total_cents, new_installments)
+            for index in range(1, new_installments + 1):
+                amount_cents = base_cents + (1 if index <= remainder else 0)
+                inst = LoanInstallment.objects.create(
+                    tenant=tenant,
+                    loan=loan,
+                    number=index,
+                    due_date=_due_date(new_start_date, new_frequency, index),
+                    amount_due=Decimal(amount_cents) / 100,
+                    amount_paid=Decimal("0.00"),
+                    status="pending",
+                )
+                new_schedule.append(inst)
+
+        remaining_paid = loan.opening_paid or Decimal("0.00")
+        for inst in new_schedule:
+            if remaining_paid <= 0:
+                break
+            due = inst.amount_due - inst.amount_paid
+            if due <= 0:
+                continue
+            applied = min(remaining_paid, due)
+            inst.amount_paid = _money(inst.amount_paid + applied)
+            inst.status = "paid" if inst.amount_paid == inst.amount_due else "partial"
+            inst.save(update_fields=["amount_paid", "status", "updated_at"])
+            remaining_paid = _money(remaining_paid - applied)
+
+        for payment in payments_qs:
+            rem = payment.amount
+            for inst in new_schedule:
+                if rem <= 0:
+                    break
+                due = inst.amount_due - inst.amount_paid
+                if due <= 0:
+                    continue
+                applied = min(rem, due)
+                inst.amount_paid = _money(inst.amount_paid + applied)
+                inst.status = "paid" if inst.amount_paid == inst.amount_due else "partial"
+                inst.save(update_fields=["amount_paid", "status", "updated_at"])
+                PaymentAllocation.objects.create(
+                    tenant_id=tenant.pk,
+                    payment=payment,
+                    installment=inst,
+                    amount=applied,
+                )
+                rem = _money(rem - applied)
+
+        _refresh_loan_totals(loan)
+    else:
+        loan.save()
+
+    return loan
+
+
+def soft_delete_loan(loan):
+    loan.deleted_at = timezone.now()
+    loan.save(update_fields=["deleted_at", "updated_at"])
+    return loan
+
+
+def restore_loan(loan):
+    loan.deleted_at = None
+    loan.save(update_fields=["deleted_at", "updated_at"])
+    return loan

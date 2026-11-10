@@ -12,7 +12,7 @@ from django.http import HttpResponse, StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -45,6 +45,8 @@ from .services import (
     ledger_period_dates,
     register_payment,
     reverse_payment,
+    restore_loan,
+    soft_delete_loan,
 )
 
 
@@ -81,6 +83,8 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
         "ledger": "owner",
         "export_excel": "manager",
         "destroy": "owner",
+        "trash": "manager",
+        "restore": "owner",
         "update": "manager",
         "partial_update": "manager",
     }
@@ -92,6 +96,11 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
             "payments__collector",
             "payments__reversals",
         )
+        if self.action == "trash" or self.request.query_params.get("trash") == "true":
+            queryset = queryset.filter(deleted_at__isnull=False)
+        else:
+            queryset = queryset.filter(deleted_at__isnull=True)
+
         if self.request.membership.role == "employee":
             queryset = queryset.filter(collector__user=self.request.user)
         return queryset
@@ -113,6 +122,28 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
             tenant=self.request.tenant,
             **data,
         )
+
+    def perform_destroy(self, instance):
+        soft_delete_loan(instance)
+
+    @action(detail=False, methods=["get"], url_path="trash")
+    def trash(self, request):
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=["post"], url_path="restore")
+    def restore(self, request, pk=None):
+        loan = Loan.objects.filter(tenant=request.tenant, pk=pk).first()
+        if loan is None:
+            raise NotFound("Préstamo no encontrado.")
+        restore_loan(loan)
+        serializer = self.get_serializer(loan)
+        return Response(serializer.data)
 
     @action(detail=False, methods=["get"], url_path="collection-today")
     def collection_today(self, request):
@@ -152,7 +183,7 @@ class LoanViewSet(ActionMinRoleMixin, TenantViewSet):
             frequency = period_to_frequency[period]
         period_start, period_end = ledger_period_dates(period, selected_date)
 
-        loans = list(Loan.objects.select_related("customer"))
+        loans = list(Loan.objects.filter(deleted_at__isnull=True).select_related("customer"))
         imported_items = {}
         for loan in loans:
             reference = loan.import_reference.rpartition(":")[2]

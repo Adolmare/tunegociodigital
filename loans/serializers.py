@@ -176,7 +176,21 @@ class LoanSerializer(serializers.ModelSerializer):
                 "frequency",
                 "start_date",
             ):
-                self.fields[field_name].read_only = True
+                self.fields[field_name].required = False
+
+    def update(self, instance, validated_data):
+        from .services import update_loan
+        data = validated_data.copy()
+        customer_details = data.pop("customer_details", None)
+        collector = data.pop("collector", None)
+        customer = data.pop("customer", None)
+        return update_loan(
+            loan=instance,
+            customer=customer,
+            customer_details=customer_details,
+            collector=collector,
+            **data,
+        )
 
     def to_internal_value(self, data):
         server_managed_fields = {
@@ -254,6 +268,7 @@ class LoanSerializer(serializers.ModelSerializer):
             "customer_name",
             "document_id",
             "location",
+            "deleted_at",
         )
 
 

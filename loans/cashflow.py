@@ -271,6 +271,7 @@ class CollectorCashSummaryView(TenantContextMixin, APIView):
                 collector_id__in=ids,
                 created_at__date__range=(start, end),
                 import_reference="",
+                deleted_at__isnull=True,
             ).values("collector_id").annotate(
                 principal=Sum("principal"),
                 paperwork=Sum("paperwork_fee"),
@@ -333,7 +334,7 @@ class CustomerLoanSummaryView(TenantContextMixin, APIView):
     max_page_size = 100
 
     def get(self, request):
-        loans_qs = Loan.objects.all()
+        loans_qs = Loan.objects.filter(deleted_at__isnull=True)
         if request.membership.role == "employee":
             loans_qs = loans_qs.filter(collector__user=request.user)
 

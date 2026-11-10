@@ -35,6 +35,7 @@ class Loan(TenantOwnedModel):
     balance = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="pending")
     import_reference = models.CharField(max_length=80, blank=True, default="")
+    deleted_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta:
         constraints = [

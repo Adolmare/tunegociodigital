@@ -386,6 +386,10 @@
     document.getElementById("ledger-nav").hidden = !isOwner;
     document.getElementById("mobile-ledger-nav").hidden = !isOwner;
     document.getElementById("employee-requests-nav").hidden = !isOwner;
+    const trashNav = document.getElementById("trash-nav");
+    if (trashNav) trashNav.hidden = !isOwner;
+    const mobileTrashNav = document.getElementById("mobile-trash-nav");
+    if (mobileTrashNav) mobileTrashNav.hidden = !isOwner;
     // La pestaña móvil de Solicitudes se mantiene oculta salvo que haya pendientes (accesible desde el panel de código)
     document.getElementById("mobile-employee-requests-nav").hidden = true;
 
@@ -400,9 +404,9 @@
     // Solo cobros del dia, saldo por cobrar y gastos para el cobrador
     document.getElementById("customer-summary-nav").hidden = isEmployee;
     document.getElementById("mobile-customer-nav").hidden = isEmployee;
-    document.getElementById("new-loan-nav").hidden = isEmployee;
-    document.getElementById("mobile-add-button").hidden = isEmployee;
-    document.getElementById("desktop-new-button").hidden = isEmployee;
+    document.getElementById("new-loan-nav").hidden = false;
+    document.getElementById("mobile-add-button").hidden = false;
+    document.getElementById("desktop-new-button").hidden = false;
     const ownerDailySection = document.getElementById("home-owner-daily-section");
     if (ownerDailySection) ownerDailySection.hidden = isEmployee;
     const ownerDailyDate = document.getElementById("owner-daily-date");
@@ -1112,6 +1116,11 @@
       );
     }).join("");
 
+    const ownerActions = document.getElementById("manage-owner-actions");
+    if (ownerActions) {
+      ownerActions.hidden = !isManager;
+    }
+
     if (!dialog.open) dialog.showModal();
   }
 
@@ -1284,6 +1293,7 @@
       "customer-summary": ["Resumen por cliente", "Consulta la cartera consolidada y abre la amortización de cualquier cliente."],
       amortization: ["Amortización del cliente", "Plan de cuotas móvil, historial de pagos y opciones para compartir o descargar."],
       "employee-requests": ["Solicitudes de empleados", "Aprueba o rechaza las solicitudes de acceso al negocio."],
+      trash: ["Papelera de préstamos", "Préstamos eliminados. Puedes consultarlos o restaurarlos al cobro activo."],
       "new-loan": ["Nuevo préstamo", "Registra un cliente o renueva su crédito en segundos."],
     };
     document.getElementById("view-title").textContent = titles[view][0];
@@ -1308,6 +1318,7 @@
     }
     if (view === "customer-summary") loadCustomerSummary();
     if (view === "employee-requests") loadEmployeeRequests();
+    if (view === "trash") loadTrash();
     clearMessages();
   }
 
@@ -2326,6 +2337,240 @@
       assignLoanCollector(state.activeManagedLoanId, collectorId, saveManageCollectorBtn);
     });
   }
+
+  function openLoanEditDialog(loanId) {
+    const loan = findLoanById(loanId);
+    const dialog = document.getElementById("loan-edit-dialog");
+    if (!loan || !dialog) return;
+
+    state.editingLoanId = String(loan.id);
+
+    const nameInput = document.getElementById("edit-customer-name");
+    const docInput = document.getElementById("edit-customer-document");
+    const phoneInput = document.getElementById("edit-customer-phone");
+    const neighborhoodInput = document.getElementById("edit-customer-neighborhood");
+
+    if (nameInput) nameInput.value = loan.customer_name || "";
+    if (docInput) docInput.value = loan.document_id || "";
+    if (phoneInput) phoneInput.value = loan.customer_phone || "";
+    if (neighborhoodInput) neighborhoodInput.value = loan.neighborhood || "";
+
+    const principalInput = document.getElementById("edit-principal");
+    const rateInput = document.getElementById("edit-interest-rate");
+    const installmentsInput = document.getElementById("edit-installments");
+    const freqInput = document.getElementById("edit-frequency");
+    const startDateInput = document.getElementById("edit-start-date");
+    const paperworkInput = document.getElementById("edit-paperwork-fee");
+
+    if (principalInput) principalInput.value = Number(loan.principal || 0);
+    if (rateInput) rateInput.value = Number(loan.interest_rate || 0);
+    if (installmentsInput) installmentsInput.value = Number(loan.installments || 1);
+    if (freqInput) freqInput.value = loan.frequency || "daily";
+    if (startDateInput) startDateInput.value = loan.start_date || localDateValue();
+    if (paperworkInput) paperworkInput.value = Number(loan.paperwork_fee ?? loan.paperwork ?? 0);
+
+    const collectorSelect = document.getElementById("edit-collector-select");
+    if (collectorSelect) {
+      collectorSelect.innerHTML = `<option value="">Sin cobrador asignado</option>` +
+        (state.employees || []).map((emp) => `<option value="${escapeHtml(emp.id)}">${escapeHtml(emp.full_name)}</option>`).join("");
+      collectorSelect.value = String(loan.collector || loan.collector_id || "");
+    }
+
+    const totalCollected = (loan.installment_schedule || []).reduce((acc, inst) => acc + Number(inst.amount_paid || 0), 0);
+    const warningEl = document.getElementById("edit-loan-payments-warning");
+    const collectedValEl = document.getElementById("edit-loan-collected-val");
+    if (warningEl && collectedValEl) {
+      if (totalCollected > 0) {
+        collectedValEl.textContent = money(totalCollected);
+        warningEl.hidden = false;
+      } else {
+        warningEl.hidden = true;
+      }
+    }
+
+    const errorEl = document.getElementById("edit-loan-error");
+    if (errorEl) {
+      errorEl.hidden = true;
+      errorEl.textContent = "";
+    }
+
+    dialog.showModal();
+  }
+
+  async function submitLoanEdit(event) {
+    event.preventDefault();
+    if (!state.editingLoanId) return;
+
+    const saveBtn = document.getElementById("save-edit-loan-button");
+    const errorEl = document.getElementById("edit-loan-error");
+    if (errorEl) errorEl.hidden = true;
+
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+
+    const payload = {
+      customer_details: {
+        full_name: (formData.get("full_name") || "").trim(),
+        document_id: (formData.get("document_id") || "").trim(),
+        phone: (formData.get("phone") || "").trim(),
+        neighborhood: (formData.get("neighborhood") || "").trim(),
+      },
+      principal: formData.get("principal"),
+      interest_rate: formData.get("interest_rate"),
+      installments: Number(formData.get("installments") || 1),
+      frequency: formData.get("frequency"),
+      start_date: formData.get("start_date"),
+      paperwork_fee: formData.get("paperwork_fee") || "0",
+      collector: formData.get("collector") || null,
+    };
+
+    setBusy(saveBtn, true, "Guardando…");
+    try {
+      await api(`/loans/${state.editingLoanId}/`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+
+      const dialog = document.getElementById("loan-edit-dialog");
+      if (dialog) dialog.close();
+
+      showToast("Préstamo actualizado correctamente.");
+      await loadDashboard();
+      if (state.view === "customer-summary") {
+        await loadCustomerSummary(state.customerSummaryPage || 1);
+      }
+      openLoanManageDialog(state.editingLoanId);
+    } catch (err) {
+      if (errorEl) {
+        errorEl.textContent = err.message || "Error al actualizar préstamo.";
+        errorEl.hidden = false;
+      } else {
+        showError(err.message);
+      }
+    } finally {
+      setBusy(saveBtn, false);
+    }
+  }
+
+  async function confirmDeleteLoan(loanId) {
+    const loan = findLoanById(loanId);
+    const clientName = loan ? loan.customer_name : "este cliente";
+    const ok = window.confirm(
+      `¿Deseas mover el préstamo de "${clientName}" a la papelera?\n\n` +
+      `Dejará de aparecer en la ruta activa de cobro, pero podrás consultarlo y restaurarlo desde la sección "Papelera" cuando lo desees.`
+    );
+    if (!ok) return;
+
+    const deleteBtn = document.getElementById("manage-delete-loan-btn");
+    setBusy(deleteBtn, true, "Moviendo…");
+    try {
+      await api(`/loans/${loanId}/`, { method: "DELETE" });
+      const manageDialog = document.getElementById("loan-manage-dialog");
+      if (manageDialog && manageDialog.open) manageDialog.close();
+
+      showToast("Préstamo movido a la papelera.");
+      await loadDashboard();
+      if (state.view === "customer-summary") {
+        await loadCustomerSummary(state.customerSummaryPage || 1);
+      }
+    } catch (err) {
+      showError(err.message || "No se pudo mover el préstamo a la papelera.");
+    } finally {
+      setBusy(deleteBtn, false);
+    }
+  }
+
+  async function loadTrash() {
+    const tbody = document.getElementById("trash-table-body");
+    const emptyEl = document.getElementById("trash-empty");
+    if (!tbody) return;
+
+    tbody.innerHTML = `<tr><td colspan="8" class="muted text-center" style="padding:2rem;">Cargando papelera…</td></tr>`;
+    if (emptyEl) emptyEl.hidden = true;
+
+    try {
+      const items = await api("/loans/trash/");
+      if (!items || !items.length) {
+        tbody.innerHTML = "";
+        if (emptyEl) emptyEl.hidden = false;
+        return;
+      }
+
+      tbody.innerHTML = items.map((loan) => {
+        const deletedStr = loan.deleted_at ? displayDate(loan.deleted_at.slice(0, 10)) : "—";
+        return (
+          `<tr>` +
+          `<td><strong>${escapeHtml(loan.customer_name || "Cliente")}</strong></td>` +
+          `<td>${escapeHtml(loan.document_id || "—")}</td>` +
+          `<td>${escapeHtml(deletedStr)}</td>` +
+          `<td>${money(loan.principal)}</td>` +
+          `<td>${money(loan.total_payable)}</td>` +
+          `<td><strong>${money(loan.balance)}</strong></td>` +
+          `<td>${escapeHtml(loan.collector_name || "Sin asignar")}</td>` +
+          `<td>` +
+          `<button class="button button-outline button-xs" type="button" data-restore-loan="${escapeHtml(loan.id)}">` +
+          `🔄 Restaurar` +
+          `</button>` +
+          `</td>` +
+          `</tr>`
+        );
+      }).join("");
+    } catch (err) {
+      tbody.innerHTML = `<tr><td colspan="8" class="muted text-center" style="color:var(--danger, #ef4444);padding:2rem;">Error al cargar papelera: ${escapeHtml(err.message)}</td></tr>`;
+    }
+  }
+
+  async function restoreLoan(loanId, button) {
+    if (button) setBusy(button, true, "Restaurando…");
+    try {
+      await api(`/loans/${loanId}/restore/`, { method: "POST" });
+      showToast("Préstamo restaurado exitosamente.");
+      await loadTrash();
+      await loadDashboard();
+    } catch (err) {
+      showError(err.message || "No se pudo restaurar el préstamo.");
+    } finally {
+      if (button) setBusy(button, false);
+    }
+  }
+
+  // Event listeners for loan edit & delete buttons
+  const manageEditLoanBtn = document.getElementById("manage-edit-loan-btn");
+  if (manageEditLoanBtn) {
+    manageEditLoanBtn.addEventListener("click", () => {
+      if (state.activeManagedLoanId) openLoanEditDialog(state.activeManagedLoanId);
+    });
+  }
+  const manageDeleteLoanBtn = document.getElementById("manage-delete-loan-btn");
+  if (manageDeleteLoanBtn) {
+    manageDeleteLoanBtn.addEventListener("click", () => {
+      if (state.activeManagedLoanId) confirmDeleteLoan(state.activeManagedLoanId);
+    });
+  }
+  const loanEditDialog = document.getElementById("loan-edit-dialog");
+  const closeEditLoan = document.getElementById("close-edit-loan");
+  const cancelEditLoan = document.getElementById("cancel-edit-loan");
+  if (closeEditLoan && loanEditDialog) closeEditLoan.addEventListener("click", () => loanEditDialog.close());
+  if (cancelEditLoan && loanEditDialog) cancelEditLoan.addEventListener("click", () => loanEditDialog.close());
+  if (loanEditDialog) {
+    loanEditDialog.addEventListener("click", (e) => {
+      if (e.target === loanEditDialog) loanEditDialog.close();
+    });
+  }
+  const loanEditForm = document.getElementById("loan-edit-form");
+  if (loanEditForm) {
+    loanEditForm.addEventListener("submit", submitLoanEdit);
+  }
+  const refreshTrashBtn = document.getElementById("refresh-trash-button");
+  if (refreshTrashBtn) {
+    refreshTrashBtn.addEventListener("click", loadTrash);
+  }
+  document.addEventListener("click", (event) => {
+    const restoreBtn = event.target.closest("[data-restore-loan]");
+    if (restoreBtn) {
+      restoreLoan(restoreBtn.dataset.restoreLoan, restoreBtn);
+    }
+  });
 
   document.addEventListener("click", (event) => {
     const button = event.target.closest("[data-payment-loan]");
