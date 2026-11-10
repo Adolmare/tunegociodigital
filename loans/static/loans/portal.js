@@ -377,6 +377,12 @@
     document.getElementById("new-loan-nav").hidden = isEmployee;
     document.getElementById("mobile-add-button").hidden = isEmployee;
     document.getElementById("desktop-new-button").hidden = isEmployee;
+    const ownerDailySection = document.getElementById("home-owner-daily-section");
+    if (ownerDailySection) ownerDailySection.hidden = isEmployee;
+    const ownerDailyDate = document.getElementById("owner-daily-date");
+    if (ownerDailyDate) ownerDailyDate.value = localDateValue();
+    const ownerDailyCollector = document.getElementById("owner-daily-collector");
+    if (ownerDailyCollector) ownerDailyCollector.value = "";
     const mainKpiCard = document.getElementById("main-kpi-card");
     if (mainKpiCard) mainKpiCard.hidden = isEmployee;
     const homeSummaryGrid = document.getElementById("home-summary-grid");
@@ -506,6 +512,77 @@
     return { items: byCustomerLoan, totalAmount: totalCollectedToday };
   }
 
+  function renderOwnerDailyCollections() {
+    const section = document.getElementById("home-owner-daily-section");
+    if (!section) return;
+    if (state.role === "employee" || !state.role) {
+      section.hidden = true;
+      return;
+    }
+    section.hidden = false;
+    const dateInput = document.getElementById("owner-daily-date");
+    const collectorSelect = document.getElementById("owner-daily-collector");
+    if (!dateInput.value) dateInput.value = localDateValue();
+    const selectedDate = dateInput.value;
+
+    // Abonos del día seleccionado, agrupados por préstamo y cobrador
+    const groups = new Map();
+    state.loans.forEach((loan) => {
+      (loan.payment_history || []).forEach((payment) => {
+        if (payment.date !== selectedDate || payment.direction !== "payment" || payment.is_reversed) return;
+        const collectorName = payment.collector_name || "Sin cobrador";
+        const key = `${loan.id}|${collectorName}`;
+        if (!groups.has(key)) {
+          groups.set(key, { loan, collectorName, amount: 0, count: 0, lastTime: "", methods: new Set() });
+        }
+        const group = groups.get(key);
+        group.amount += Number(payment.amount || 0);
+        group.count += 1;
+        if ((payment.time || "") > group.lastTime) group.lastTime = payment.time || "";
+        group.methods.add(payment.method);
+      });
+    });
+
+    // Opciones del filtro de cobrador (conserva la selección actual)
+    const previousCollector = collectorSelect.value;
+    const collectorNames = [...new Set([...groups.values()].map((g) => g.collectorName))].sort();
+    collectorSelect.replaceChildren(new Option("Todos los cobradores", ""));
+    collectorNames.forEach((name) => collectorSelect.add(new Option(name, name)));
+    collectorSelect.value = collectorNames.includes(previousCollector) ? previousCollector : "";
+
+    const entries = [...groups.values()]
+      .filter((g) => !collectorSelect.value || g.collectorName === collectorSelect.value)
+      .sort((a, b) => b.lastTime.localeCompare(a.lastTime));
+    const total = entries.reduce((sum, g) => sum + g.amount, 0);
+    const methodLabels = { cash: "Efectivo", transfer: "Transferencia", other: "Otro" };
+
+    document.getElementById("owner-daily-total").textContent = money(total);
+    document.getElementById("owner-daily-pill").textContent =
+      `${entries.length} ${entries.length === 1 ? "persona" : "personas"}`;
+    document.getElementById("owner-daily-empty").hidden = entries.length > 0;
+    const list = document.getElementById("owner-daily-list");
+    list.replaceChildren();
+    entries.forEach((entry) => {
+      const loan = entry.loan;
+      const name = loan.customer_name || "Cliente";
+      const methods = [...entry.methods].map((m) => methodLabels[m] || m).join(", ");
+      const row = document.createElement("article");
+      row.className = "loan-row";
+      row.innerHTML =
+        `<div class="loan-person"><span class="customer-avatar">${escapeHtml(initials(name))}</span>` +
+        `<div><strong>${escapeHtml(name)}</strong>` +
+        `<span>${escapeHtml(loan.neighborhood || "Sin barrio")} · ${entry.count} ${entry.count === 1 ? "abono" : "abonos"}` +
+        `${entry.lastTime ? ` · ${escapeHtml(entry.lastTime)}` : ""}</span></div></div>` +
+        `<div class="loan-detail"><strong class="text-emerald">${money(entry.amount)}</strong><span>Cobrado ese día</span></div>` +
+        `<div class="loan-detail"><strong>${escapeHtml(entry.collectorName)}</strong><span>${escapeHtml(methods)}</span></div>` +
+        `<span class="status-pill status-paid">Cobrado ✓</span>` +
+        `<div class="loan-row-actions">` +
+        `<button class="loan-action-secondary" type="button" data-open-amortization="${escapeHtml(loan.id)}">📊 Ver amortización</button>` +
+        `</div>`;
+      list.append(row);
+    });
+  }
+
   async function loadDashboard() {
     clearMessages();
     try {
@@ -519,6 +596,7 @@
       populateExistingCustomers();
       renderLoans();
       renderCollections();
+      renderOwnerDailyCollections();
 
       const isEmployee = state.role === "employee";
       const mainLabel = document.getElementById("main-kpi-label");
@@ -1931,6 +2009,26 @@
   if (loanCollectorFilter) loanCollectorFilter.addEventListener("change", renderLoans);
   const collectionQuickSearch = document.getElementById("collection-quick-search");
   if (collectionQuickSearch) collectionQuickSearch.addEventListener("input", renderCollections);
+  const ownerDailyDateInput = document.getElementById("owner-daily-date");
+  if (ownerDailyDateInput) ownerDailyDateInput.addEventListener("change", renderOwnerDailyCollections);
+  const ownerDailyCollectorSelect = document.getElementById("owner-daily-collector");
+  if (ownerDailyCollectorSelect) ownerDailyCollectorSelect.addEventListener("change", renderOwnerDailyCollections);
+  const ownerDailyTodayBtn = document.getElementById("owner-daily-today");
+  if (ownerDailyTodayBtn) {
+    ownerDailyTodayBtn.addEventListener("click", () => {
+      ownerDailyDateInput.value = localDateValue();
+      renderOwnerDailyCollections();
+    });
+  }
+  const ownerDailyYesterdayBtn = document.getElementById("owner-daily-yesterday");
+  if (ownerDailyYesterdayBtn) {
+    ownerDailyYesterdayBtn.addEventListener("click", () => {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      ownerDailyDateInput.value = localDateValue(d);
+      renderOwnerDailyCollections();
+    });
+  }
   const homeCollectionQuickSearch = document.getElementById("home-collection-quick-search");
   if (homeCollectionQuickSearch) homeCollectionQuickSearch.addEventListener("input", renderCollections);
   const existingCustomerSelect = document.getElementById("existing-customer-select");

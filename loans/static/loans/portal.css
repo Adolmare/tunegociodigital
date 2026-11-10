@@ -2793,3 +2793,46 @@ textarea:focus-visible {
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
+
+/* Cobros del día (vista del dueño) */
+.owner-daily-filters {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.owner-daily-chips {
+  display: flex;
+  gap: 8px;
+}
+
+.owner-daily-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 12px 16px;
+  border: 1px solid var(--green-border);
+  border-radius: var(--radius-sm);
+  background: var(--green-soft);
+  color: var(--green-dark);
+}
+
+.owner-daily-total span {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.owner-daily-total strong {
+  font-family: "Manrope", sans-serif;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+@media (min-width: 768px) {
+  .owner-daily-filters {
+    grid-template-columns: 1fr 1fr auto;
+    align-items: end;
+  }
+}

@@ -227,6 +227,7 @@ class LoanSerializer(serializers.ModelSerializer):
             {
                 "id": str(payment.id),
                 "date": timezone.localtime(payment.paid_at).date().isoformat(),
+                "time": timezone.localtime(payment.paid_at).strftime("%H:%M"),
                 "amount": f"{(-payment.amount if payment.direction == 'reversal' else payment.amount):.2f}",
                 "direction": payment.direction,
                 "method": payment.method,

@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'loans/portal.css' %}?v=20261109-9">
-  <script src="{% static 'loans/portal.js' %}?v=20261109-9" defer></script>
+  <link rel="stylesheet" href="{% static 'loans/portal.css' %}?v=20261109-10">
+  <script src="{% static 'loans/portal.js' %}?v=20261109-10" defer></script>
 </head>
 <body>
   <main class="app-shell" id="loan-app" data-api-base="/api/v1">
@@ -328,6 +328,44 @@
                 <span class="summary-caption" id="third-kpi-caption">Total histórico registrado</span>
               </article>
             </div>
+
+            <section class="section-card" id="home-owner-daily-section" hidden>
+              <div class="section-heading">
+                <div>
+                  <h2>Cobros del día</h2>
+                  <p class="muted">Quién pagó, cuánto y qué cobrador lo recibió en la fecha elegida.</p>
+                </div>
+                <span class="count-pill" id="owner-daily-pill">0 personas</span>
+              </div>
+              <div class="owner-daily-filters">
+                <div class="field">
+                  <label for="owner-daily-date">Fecha</label>
+                  <input id="owner-daily-date" type="date">
+                </div>
+                <div class="field">
+                  <label for="owner-daily-collector">Cobrador</label>
+                  <select id="owner-daily-collector">
+                    <option value="">Todos los cobradores</option>
+                  </select>
+                </div>
+                <div class="owner-daily-chips">
+                  <button class="button button-quiet button-sm" type="button" id="owner-daily-today">Hoy</button>
+                  <button class="button button-quiet button-sm" type="button" id="owner-daily-yesterday">Ayer</button>
+                </div>
+              </div>
+              <div class="owner-daily-total">
+                <span>Total recogido</span>
+                <strong id="owner-daily-total">$0</strong>
+              </div>
+              <div class="loan-list" id="owner-daily-list"></div>
+              <div class="empty-state" id="owner-daily-empty" hidden>
+                <span class="empty-icon" aria-hidden="true">
+                  <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+                </span>
+                <h3>No hay cobros en esta fecha</h3>
+                <p>Prueba con otro día o con otro cobrador.</p>
+              </div>
+            </section>
 
             <section class="section-card" id="home-loans-section">
               <div class="section-heading">
