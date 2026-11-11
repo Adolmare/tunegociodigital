@@ -1135,6 +1135,10 @@
     if (ownerActions) {
       ownerActions.hidden = !isManager;
     }
+    const manageDeleteBtn = document.getElementById("manage-delete-loan-btn");
+    if (manageDeleteBtn) {
+      manageDeleteBtn.hidden = !isOwner;
+    }
 
     if (!dialog.open) dialog.showModal();
   }
@@ -1296,9 +1300,9 @@
   }
 
   function showView(view) {
-    if (state.role === "employee" && ["collections", "ledger", "employee-requests", "customer-summary", "new-loan"].includes(view)) {
+    if (state.role === "employee" && ["collections", "ledger", "employee-requests", "customer-summary", "trash"].includes(view)) {
       view = "home";
-    } else if ((view === "ledger" || view === "employee-requests") && state.role !== "owner") {
+    } else if ((view === "ledger" || view === "employee-requests" || view === "trash") && state.role !== "owner") {
       view = "home";
     }
     if (view !== "amortization" && state.view !== "amortization") {
@@ -2491,26 +2495,68 @@
     }
   }
 
-  async function confirmDeleteLoan(loanId, deleteBtn) {
+  async function openLoanDeleteDialog(loanId) {
     let loan = findLoanById(loanId);
     if (!loan) {
       try {
         loan = await api(`/loans/${loanId}/`);
       } catch (_) {}
     }
-    const clientName = loan ? loan.customer_name : "este cliente";
-    const ok = window.confirm(
-      `¿Deseas mover el préstamo de "${clientName}" a la papelera?\n\n` +
-      `Dejará de aparecer en la ruta activa de cobro, pero podrás consultarlo y restaurarlo desde la sección "Papelera" cuando lo desees.`
-    );
-    if (!ok) return;
+    const dialog = document.getElementById("loan-delete-dialog");
+    if (!loan || !dialog) return;
 
-    const btn = deleteBtn || document.getElementById("manage-delete-loan-btn");
-    if (btn) setBusy(btn, true, "Moviendo…");
+    const manageDialog = document.getElementById("loan-manage-dialog");
+    if (manageDialog && manageDialog.open) {
+      manageDialog.close();
+    }
+
+    state.deletingLoanId = String(loan.id);
+    const name = loan.customer_name || "Cliente";
+    const totalPayable = Number(loan.total_payable || 0);
+    const balance = Number(loan.balance || 0);
+    const collected = Math.max(0, totalPayable - balance);
+    const metaParts = [
+      loan.neighborhood || "Sin barrio",
+      loan.document_id ? `CC ${loan.document_id}` : "",
+      loan.collector_name ? `Cobrador: ${loan.collector_name}` : "Sin cobrador",
+    ].filter(Boolean);
+
+    const avatarEl = document.getElementById("delete-loan-avatar");
+    const customerEl = document.getElementById("delete-loan-customer");
+    const metaEl = document.getElementById("delete-loan-meta");
+    const balanceEl = document.getElementById("delete-loan-balance");
+    const principalEl = document.getElementById("delete-loan-principal");
+    const collectedEl = document.getElementById("delete-loan-collected");
+    const errorEl = document.getElementById("delete-loan-error");
+
+    if (avatarEl) avatarEl.textContent = initials(name);
+    if (customerEl) customerEl.textContent = name;
+    if (metaEl) metaEl.textContent = metaParts.join(" · ");
+    if (balanceEl) balanceEl.textContent = money(balance);
+    if (principalEl) principalEl.textContent = money(loan.principal || 0);
+    if (collectedEl) collectedEl.textContent = money(collected);
+    if (errorEl) {
+      errorEl.hidden = true;
+      errorEl.textContent = "";
+    }
+
+    dialog.showModal();
+  }
+
+  async function submitLoanDelete(event) {
+    event.preventDefault();
+    if (!state.deletingLoanId) return;
+
+    const confirmBtn = document.getElementById("confirm-delete-loan-button");
+    const errorEl = document.getElementById("delete-loan-error");
+    if (errorEl) errorEl.hidden = true;
+
+    if (confirmBtn) setBusy(confirmBtn, true, "Moviendo…");
     try {
-      await api(`/loans/${loanId}/`, { method: "DELETE" });
-      const manageDialog = document.getElementById("loan-manage-dialog");
-      if (manageDialog && manageDialog.open) manageDialog.close();
+      await api(`/loans/${state.deletingLoanId}/`, { method: "DELETE" });
+      const dialog = document.getElementById("loan-delete-dialog");
+      if (dialog && dialog.open) dialog.close();
+      state.deletingLoanId = null;
 
       showToast("Préstamo movido a la papelera.");
       await loadDashboard();
@@ -2518,10 +2564,19 @@
         await loadCustomerSummary(state.customerSummaryPage || 1);
       }
     } catch (err) {
-      showError(err.message || "No se pudo mover el préstamo a la papelera.");
+      if (errorEl) {
+        errorEl.textContent = err.message || "No se pudo mover el préstamo a la papelera.";
+        errorEl.hidden = false;
+      } else {
+        showError(err.message || "No se pudo mover el préstamo a la papelera.");
+      }
     } finally {
-      if (btn) setBusy(btn, false);
+      if (confirmBtn) setBusy(confirmBtn, false);
     }
+  }
+
+  function confirmDeleteLoan(loanId) {
+    return openLoanDeleteDialog(loanId);
   }
 
   async function loadTrash() {
@@ -2604,6 +2659,20 @@
   const loanEditForm = document.getElementById("loan-edit-form");
   if (loanEditForm) {
     loanEditForm.addEventListener("submit", submitLoanEdit);
+  }
+  const loanDeleteDialog = document.getElementById("loan-delete-dialog");
+  const closeDeleteLoan = document.getElementById("close-delete-loan");
+  const cancelDeleteLoan = document.getElementById("cancel-delete-loan");
+  if (closeDeleteLoan && loanDeleteDialog) closeDeleteLoan.addEventListener("click", () => loanDeleteDialog.close());
+  if (cancelDeleteLoan && loanDeleteDialog) cancelDeleteLoan.addEventListener("click", () => loanDeleteDialog.close());
+  if (loanDeleteDialog) {
+    loanDeleteDialog.addEventListener("click", (e) => {
+      if (e.target === loanDeleteDialog) loanDeleteDialog.close();
+    });
+  }
+  const loanDeleteForm = document.getElementById("loan-delete-form");
+  if (loanDeleteForm) {
+    loanDeleteForm.addEventListener("submit", submitLoanDelete);
   }
   const refreshTrashBtn = document.getElementById("refresh-trash-button");
   if (refreshTrashBtn) {

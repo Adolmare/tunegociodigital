@@ -383,13 +383,16 @@ def reverse_payment(*, payment, user):
     return reversal
 
 
+_UNSET = object()
+
+
 @transaction.atomic
 def update_loan(
     *,
     loan,
     customer=None,
     customer_details=None,
-    collector=None,
+    collector=_UNSET,
     principal=None,
     interest_rate=None,
     installments=None,
@@ -405,9 +408,11 @@ def update_loan(
         doc_id = (customer_details.get("document_id") or "").strip()
         cust = loan.customer
         if cust:
-            for field_name in ("full_name", "neighborhood", "phone"):
+            for field_name in ("full_name", "neighborhood"):
                 if customer_details.get(field_name):
                     setattr(cust, field_name, customer_details[field_name])
+            if "phone" in customer_details:
+                cust.phone = customer_details.get("phone") or ""
             if doc_id:
                 cust.document_id = doc_id
             cust.save()
@@ -416,8 +421,8 @@ def update_loan(
             raise ValidationError({"customer": "El cliente debe pertenecer a la empresa activa."})
         loan.customer = customer
 
-    if collector is not None:
-        if collector.tenant_id != tenant.pk:
+    if collector is not _UNSET:
+        if collector is not None and collector.tenant_id != tenant.pk:
             raise ValidationError({"collector": "El cobrador debe pertenecer a la empresa activa."})
         loan.collector = collector
 
@@ -451,7 +456,7 @@ def update_loan(
         new_total_payable = _money(new_principal + interest)
 
         payments_qs = list(
-            loan.payments.filter(direction="payment", reversals__isnull=True).order_by("created_at", "id")
+            loan.payments.filter(direction="payment", reversals__isnull=True).order_by("paid_at", "created_at", "id")
         )
         total_paid_from_payments = sum((p.amount for p in payments_qs), Decimal("0.00"))
         total_collected = _money(total_paid_from_payments + (loan.opening_paid or Decimal("0.00")))
@@ -460,6 +465,21 @@ def update_loan(
             raise ValidationError(
                 {"principal": f"El nuevo total a pagar ({new_total_payable}) no puede ser menor a lo ya cobrado ({total_collected})."}
             )
+
+        custom_installments_requested = (
+            is_open_ended is False
+            or (
+                loan.is_open_ended
+                and is_open_ended is None
+                and (
+                    (installments is not None and int(installments) != loan.installments)
+                    or new_frequency == "monthly"
+                )
+            )
+        )
+        if custom_installments_requested:
+            loan.is_open_ended = False
+            loan.collection_amount = Decimal("0.00")
 
         if loan.is_open_ended:
             collection_amount = _collection_amount(new_principal, new_frequency)
@@ -473,6 +493,10 @@ def update_loan(
             if new_installments < 1:
                 raise ValidationError({"installments": "Debe existir al menos una cuota."})
             total_cents = int(new_total_payable * 100)
+            if new_installments > total_cents:
+                raise ValidationError(
+                    {"installments": "El número de cuotas no puede exceder los centavos a cobrar."}
+                )
 
         loan.principal = new_principal
         loan.interest_rate = new_rate

@@ -519,6 +519,28 @@ textarea:focus-visible {
   background: var(--surface-subtle);
 }
 
+.button-danger {
+  background: linear-gradient(180deg, #dc2626 0%, var(--red) 100%);
+  color: var(--surface);
+  box-shadow: 0 4px 12px rgba(190, 18, 60, 0.24);
+}
+
+.button-danger:hover:not(:disabled) {
+  background: #9f1239;
+  box-shadow: 0 6px 18px rgba(190, 18, 60, 0.32);
+}
+
+.button-danger-outline {
+  border-color: rgba(190, 18, 60, 0.28);
+  background: var(--surface);
+  color: var(--red);
+}
+
+.button-danger-outline:hover:not(:disabled) {
+  border-color: var(--red);
+  background: var(--red-soft);
+}
+
 .text-button {
   display: inline-flex;
   width: 100%;
@@ -2835,4 +2857,147 @@ textarea:focus-visible {
     grid-template-columns: 1fr 1fr auto;
     align-items: end;
   }
+
+  .delete-loan-dialog {
+    width: min(470px, calc(100% - 32px));
+  }
+}
+
+/* Modal de confirmación para mover préstamo a papelera */
+.delete-loan-body {
+  gap: 14px;
+}
+
+.delete-loan-hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-right: 34px;
+}
+
+.delete-loan-icon {
+  display: grid;
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border: 1px solid rgba(190, 18, 60, 0.2);
+  border-radius: 14px;
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.delete-loan-icon .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.delete-loan-eyebrow {
+  margin: 0 0 2px;
+  color: var(--red);
+}
+
+.delete-loan-hero h2 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.delete-loan-desc {
+  margin: 0;
+  color: var(--ink-secondary);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.delete-loan-summary {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+
+.delete-loan-summary-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.delete-loan-avatar {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.delete-loan-summary-head strong {
+  display: block;
+  font-family: "Manrope", sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.delete-loan-summary-head > div > span {
+  display: block;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.delete-loan-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line-strong);
+}
+
+.delete-loan-metrics span {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.delete-loan-metrics strong {
+  display: block;
+  margin-top: 2px;
+  font-family: "Manrope", sans-serif;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.delete-loan-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid var(--green-border);
+  border-radius: var(--radius-sm);
+  background: var(--green-soft);
+  color: var(--green-dark);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.delete-loan-note-badge {
+  flex-shrink: 0;
+  font-size: 16px;
+}
+
+.delete-loan-error {
+  padding: 10px 12px;
+  border: 1px solid rgba(190, 18, 60, 0.25);
+  border-radius: var(--radius-sm);
+  background: var(--red-soft);
+  color: var(--red);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.delete-loan-actions {
+  margin-top: 4px;
 }

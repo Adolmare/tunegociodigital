@@ -9,8 +9,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400..700;1,9..40,400..700&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{% static 'loans/portal.css' %}?v=20261110-1">
-  <script src="{% static 'loans/portal.js' %}?v=20261110-1" defer></script>
+  <link rel="stylesheet" href="{% static 'loans/portal.css' %}?v=20261110-2">
+  <script src="{% static 'loans/portal.js' %}?v=20261110-2" defer></script>
 </head>
 <body>
   <main class="app-shell" id="loan-app" data-api-base="/api/v1">
@@ -1418,6 +1418,67 @@
       <div class="modal-actions" style="display:flex;gap:0.75rem;margin-top:1.25rem;justify-content:flex-end;">
         <button class="button button-outline" type="button" id="cancel-edit-loan">Cancelar</button>
         <button class="button button-primary" type="submit" id="save-edit-loan-button">Guardar cambios</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- MODAL: CONFIRMAR MOVER PRÉSTAMO A PAPELERA (DUEÑO) -->
+  <dialog class="payment-dialog delete-loan-dialog" id="loan-delete-dialog" aria-labelledby="delete-loan-title">
+    <form class="payment-form delete-loan-body" id="loan-delete-form">
+      <div class="dialog-handle" aria-hidden="true"></div>
+      <button class="dialog-close" type="button" id="close-delete-loan" aria-label="Cerrar">×</button>
+
+      <div class="delete-loan-hero">
+        <span class="delete-loan-icon" aria-hidden="true">
+          <svg class="icon" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        </span>
+        <div>
+          <p class="eyebrow delete-loan-eyebrow">MOVER A PAPELERA</p>
+          <h2 id="delete-loan-title">¿Enviar préstamo a la papelera?</h2>
+        </div>
+      </div>
+
+      <p class="delete-loan-desc">
+        Este préstamo dejará de aparecer en tu cartera y rutas de cobro activas, pero sus abonos e historial permanecerán guardados.
+      </p>
+
+      <div class="delete-loan-summary">
+        <div class="delete-loan-summary-head">
+          <span class="customer-avatar delete-loan-avatar" id="delete-loan-avatar">CL</span>
+          <div>
+            <strong id="delete-loan-customer">Cliente</strong>
+            <span id="delete-loan-meta">Sin barrio</span>
+          </div>
+        </div>
+        <div class="delete-loan-metrics">
+          <div>
+            <span>Saldo pendiente</span>
+            <strong id="delete-loan-balance">$0</strong>
+          </div>
+          <div>
+            <span>Capital</span>
+            <strong id="delete-loan-principal">$0</strong>
+          </div>
+          <div>
+            <span>Abonado</span>
+            <strong id="delete-loan-collected">$0</strong>
+          </div>
+        </div>
+      </div>
+
+      <div class="delete-loan-note">
+        <span class="delete-loan-note-badge" aria-hidden="true">♻️</span>
+        <span>Podrás consultarlo o <strong>restaurarlo</strong> cuando quieras desde la sección <strong>Papelera</strong>.</span>
+      </div>
+
+      <div id="delete-loan-error" class="delete-loan-error" hidden></div>
+
+      <div class="form-actions delete-loan-actions">
+        <button class="button button-quiet" type="button" id="cancel-delete-loan">Cancelar</button>
+        <button class="button button-danger" type="submit" id="confirm-delete-loan-button">
+          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          <span>Sí, mover a papelera</span>
+        </button>
       </div>
     </form>
   </dialog>

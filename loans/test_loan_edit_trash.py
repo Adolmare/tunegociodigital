@@ -342,3 +342,87 @@ def test_employee_cannot_edit_or_delete_loan(two_tenants, client_for, rls_contex
     # Employee tries to delete -> 403 Forbidden
     res_del = client.delete(f"/api/v1/loans/{loan.id}/")
     assert res_del.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+def test_owner_can_clear_collector_and_edit_open_ended_loan(
+    two_tenants, client_for, rls_context, seeded_tools
+):
+    owner, tenant = _setup_tenant(two_tenants, rls_context)
+    rls_context(owner, tenant)
+    collector = Employee.unscoped.create(
+        tenant=tenant,
+        full_name="Cobrador Temporal",
+        is_active=True,
+    )
+    loan = create_loan(
+        tenant=tenant,
+        customer_details={
+            "full_name": "Elena Vargas",
+            "document_id": "777888",
+            "neighborhood": "Norte",
+            "phone": "3005551122",
+        },
+        collector=collector,
+        principal=Decimal("100000.00"),
+        interest_rate=Decimal("20.00"),
+        frequency="daily",
+        start_date=timezone.localdate(),
+        is_open_ended=True,
+    )
+    assert loan.installments == 30
+    assert loan.collection_amount == Decimal("4000.00")
+
+    client = client_for(owner, tenant)
+
+    # Clear collector + phone, keep open-ended auto installments when changing rate
+    res_auto = client.patch(
+        f"/api/v1/loans/{loan.id}/",
+        {
+            "customer_details": {
+                "full_name": "Elena Vargas",
+                "document_id": "777888",
+                "neighborhood": "Norte",
+                "phone": "",
+            },
+            "collector": None,
+            "interest_rate": "10.00",
+            "installments": 30,
+        },
+        format="json",
+    )
+    assert res_auto.status_code == status.HTTP_200_OK
+
+    rls_context(owner, tenant)
+    loan.refresh_from_db()
+    assert loan.collector is None
+    assert loan.customer.phone == ""
+    assert loan.is_open_ended is True
+    assert loan.total_payable == Decimal("110000.00")
+    assert loan.installments == 28
+
+    # Explicitly changing installments switches to fixed equal installments
+    res_fixed = client.patch(
+        f"/api/v1/loans/{loan.id}/",
+        {"installments": 10},
+        format="json",
+    )
+    assert res_fixed.status_code == status.HTTP_200_OK
+
+    rls_context(owner, tenant)
+    loan.refresh_from_db()
+    assert loan.is_open_ended is False
+    assert loan.installments == 10
+    assert loan.schedule.first().amount_due == Decimal("11000.00")
+
+
+@pytest.mark.django_db
+def test_portal_html_includes_edit_and_delete_modals(client):
+    response = client.get("/loans/")
+    assert response.status_code == status.HTTP_200_OK
+    html = response.content.decode("utf-8")
+    assert 'id="loan-edit-dialog"' in html
+    assert 'id="loan-delete-dialog"' in html
+    assert 'id="trash-view"' in html
+    assert 'portal.js?v=20261110-2' in html
+    assert 'portal.css?v=20261110-2' in html

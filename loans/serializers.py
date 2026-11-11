@@ -179,10 +179,10 @@ class LoanSerializer(serializers.ModelSerializer):
                 self.fields[field_name].required = False
 
     def update(self, instance, validated_data):
-        from .services import update_loan
+        from .services import _UNSET, update_loan
         data = validated_data.copy()
         customer_details = data.pop("customer_details", None)
-        collector = data.pop("collector", None)
+        collector = data.pop("collector", _UNSET)
         customer = data.pop("customer", None)
         return update_loan(
             loan=instance,
